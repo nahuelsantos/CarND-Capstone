@@ -4,7 +4,7 @@ import rospy
 from std_msgs.msg import Bool
 from styx_msgs.msg import Lane
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import TwistStamped, PoseStamped
 import math
 
 from twist_controller import Controller
@@ -56,7 +56,7 @@ class DBWNode(object):
 
         # TODO: Create `TwistController` object
         # self.controller = TwistController(<Arguments you wish to provide>)
-        kp = 1.5
+        kp = 1.0
         ki = 0.5
         kd = 0
         samplePeriod = 0.02
@@ -93,7 +93,7 @@ class DBWNode(object):
         # save current speed
         self.current_vel = msg.twist.linear
 
-    def current_pose_cv(self, msg):
+    def current_pos_cb(self, msg):
         # save current position
         self.current_pose = msg.pose
 
@@ -108,13 +108,17 @@ class DBWNode(object):
         while not rospy.is_shutdown():
             # TODO: Get predicted throttle, brake, and steering using `twist_controller`
 
-            ToSkip = [self.proposed_vel, self.proposed_ang, self.current_vel, self.current_pose]
+            ToSkip = [self.proposed_vel, self.proposed_ang, 
+                      self.current_vel, self.current_pose, 
+                      self.wpts_ahead]
             if None in ToSkip:
                 continue
-            if len(self.waypoints) >= 10:
+            if len(self.wpts_ahead) >= 10:
+
                 throttle, brake, steering = self.controller.control(self.proposed_vel, self.proposed_ang, 
                                                                     self.current_vel, self.current_pose, 
                                                                     self.dbw_en, self.wpts_ahead)
+                #rospy.logwarn("throttle: %s, steering: %s", throttle, steering)
             else:
                 throttle, brake, steering = 0, 2000, 0
             #rospy.logwarn("steering: %s",steering)

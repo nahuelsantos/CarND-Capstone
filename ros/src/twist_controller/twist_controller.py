@@ -1,6 +1,6 @@
 from pid import *
 from yaw_controller import YawController
-from math import sqrt
+from math import sqrt, cos, sin
 import numpy as np
 import tf
 import rospy
@@ -8,7 +8,7 @@ import rospy
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
 
-def get_cte(pos, wpts_ahead):
+def get_cte(pose, wpts_ahead):
     # transform wpts_ahead coordinates into cur_pos's frame
     saved_x = []
     saved_y = []
@@ -26,8 +26,8 @@ def get_cte(pos, wpts_ahead):
         tempx = wpts_ahead[i].pose.pose.position.x - x_origin
         tempy = wpts_ahead[i].pose.pose.position.y - y_origin
         # rotate
-        final_x = tempx * cos(0-yaw) - tempy * sin(0-yaw)
-        final_y = tempx * sin(0-yaw) + tempy * cos(0-yaw)
+        final_x = tempx * cos(yaw) + tempy * sin(yaw)
+        final_y = -tempx * sin(yaw) + tempy * cos(yaw)
         # save
         saved_x.append(final_x)
         saved_y.append(final_y)
@@ -77,23 +77,26 @@ class Controller(object):
         current_pos = args[3]
         dbw_en = args[4]
         wpts_ahead = args[5]
-        # fetch current time
+        # fetch current time and update
         time_now = rospy.get_time()
         sample_time = time_now - self.time_i + 1e-6
+        self.time_i = time_now
 
         # when manual driving is enabled, reset the controller 
-        if not dbw_enabled:
+        if not dbw_en:
             self.accel_controller.reset()
             self.steer_controller.reset()
             
         # find cross track error between current position and the intented trajectory
         cte = get_cte(current_pos, wpts_ahead)
+        rospy.logwarn("cte: %s", cte)
         # find velocity magnitude difference
         tar_vel_mag = target_vel.x
         cur_vel_mag = current_vel.x        
         vel_diff = tar_vel_mag - cur_vel_mag
         # in case of off road, find control input that put the vehicle back on the track
         steer = self.steer_controller.step(cte, sample_time)
+        rospy.logwarn("steer: %s", steer)
         # predictive steering
         steer_2 = self.yaw_controller.get_steering(tar_vel_mag, target_ang.z, cur_vel_mag)
         # addup for actual steer
