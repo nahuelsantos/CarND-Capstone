@@ -2,6 +2,7 @@
 
 import rospy
 from std_msgs.msg import Bool
+from styx_msgs.msg import Lane
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
 from geometry_msgs.msg import TwistStamped
 import math
@@ -61,19 +62,24 @@ class DBWNode(object):
         samplePeriod = 0.02
         self.controller = Controller(kp,ki,kd,accel_limit,
                                      decel_limit,max_steer_angle,
-                                     samplePeriod,vehicle_mass,wheel_radius,
-                                     wheel_base,steer_ratio,max_lat_accel)
+                                     vehicle_mass,wheel_radius,
+                                     wheel_base,steer_ratio,
+                                     max_lat_accel)
 
         # TODO: Subscribe to all the topics you need to
         rospy.Subscriber('/twist_cmd', TwistStamped, self.twisted_cb)
         rospy.Subscriber('/current_velocity', TwistStamped, self.current_vel_cb)
+        rospy.Subscriber('/current_pose', PoseStamped, self.current_pos_cb)
         rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_cb)
+        rospy.Subscriber('/final_waypoints', Lane, self.wpts_cb)
 
         # parameters saved via subscribers
-        self.proposed_vel = TwistStamped().twist.linear
-        self.proposed_ang = TwistStamped().twist.angular
-        self.current_vel = TwistStamped().twist.linear
+        self.proposed_vel = None
+        self.proposed_ang = None
+        self.current_vel = None
+        self.current_pose = None
         self.dbw_en = True
+        self.wpts_ahead = None
 
         self.loop()
 
@@ -84,27 +90,33 @@ class DBWNode(object):
         self.proposed_ang = msg.twist.angular
 
     def current_vel_cb(self, msg):
+        # save current speed
         self.current_vel = msg.twist.linear
+
+    def current_pose_cv(self, msg):
+        # save current position
+        self.current_pose = msg.pose
 
     def dbw_cb(self, msg):
         self.dbw_en = msg.data
+
+    def wpts_cb(self, msg):
+        self.wpts_ahead = msg.waypoints
 
     def loop(self):
         rate = rospy.Rate(50) # 50Hz
         while not rospy.is_shutdown():
             # TODO: Get predicted throttle, brake, and steering using `twist_controller`
-            # You should only publish the control commands if dbw is enabled
-            # throttle, brake, steering = self.controller.control(<proposed linear velocity>,
-            #                                                     <proposed angular velocity>,
-            #                                                     <current linear velocity>,
-            #                                                     <dbw status>,
-            #                                                     <any other argument you need>)
-            # if <dbw is enabled>:
-            #   self.publish(throttle, brake, steer)
-            # throttle, brake, steering = self.controller.control(self.proposed_vel, self.proposed_ang, self.current_vel, self.dbw_en)
-            throttle = 1.0
-            brake = 0.0
-            steering = 0.0
+
+            ToSkip = [self.proposed_vel, self.proposed_ang, self.current_vel, self.current_pose]
+            if None in ToSkip:
+                continue
+            if len(self.waypoints) >= 10:
+                throttle, brake, steering = self.controller.control(self.proposed_vel, self.proposed_ang, 
+                                                                    self.current_vel, self.current_pose, 
+                                                                    self.dbw_en, self.wpts_ahead)
+            else:
+                throttle, brake, steering = 0, 2000, 0
             #rospy.logwarn("steering: %s",steering)
             if self.dbw_en:
                 self.publish(throttle, brake, steering)
