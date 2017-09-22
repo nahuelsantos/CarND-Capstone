@@ -1,9 +1,8 @@
-
 import rospy
 from pid import PID
 from yaw_controller import YawController
 from lowpass import LowPassFilter
-from std_msgs.msg   import Float32
+from std_msgs.msg import Float32
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
