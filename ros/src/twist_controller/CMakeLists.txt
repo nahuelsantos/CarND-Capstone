@@ -76,7 +76,6 @@ find_package(catkin REQUIRED COMPONENTS
 #   dbw_mkz_msgs#   geometry_msgs#   std_msgs
 # )
 
-
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
 ################################################
