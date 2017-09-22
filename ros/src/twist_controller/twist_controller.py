@@ -4,12 +4,9 @@ from pid import PID
 from yaw_controller import YawController
 from lowpass import LowPassFilter
 from std_msgs.msg   import Float32
-#from styx.srv import ChangeControlPIDCoeff
-
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
-
 
 class Controller(object):
 	def __init__(self, *args, **kwargs):
@@ -28,15 +25,9 @@ class Controller(object):
 		self.brake_deadband = kwargs["brake_deadband"]
 		self.time = None
 
-		#service = rospy.Service('~change_PID_coeff', ChangeControlPIDCoeff, self.changePIDCoeff)
-
 		self.last_speed_target = 0.0
 		self.last_speed_target = 0.0
 		
-		pass
-	#def changePIDCoeff(self, msg):
-	#	return ChangeControlPIDCoeffResponse(True)
-
 	def control(self, *args, **kwargs):
 
 		try:
