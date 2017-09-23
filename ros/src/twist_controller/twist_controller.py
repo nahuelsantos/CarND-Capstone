@@ -1,33 +1,39 @@
 
 import rospy
-from pid import PID
+from pid import *
 from yaw_controller import YawController
 from lowpass import LowPassFilter
 from std_msgs.msg   import Float32
 
+
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
+PID_CONTROL_RESET_Trend_CH = True
+PID_CONTROL_RESET_Target_CH = False
+PID_STEER_RESET_Trend_CH = True
+PID_STEER_RESET_Target_CH = False
+CALIBRATION = False
 
 class Controller(object):
     def __init__(self, *args, **kwargs):
         
         # Define the 2 PIDs: one for the throttle/brake control, the second one for the steering
-        self.pid_control = PID(3, .5, .125, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
-        self.pid_steering = PID(1 ,.0, .0)
-
-        #self.pid_control  = PID(5.0, 0.1, 0.02)
-        #self.pid_steering = PID(0.6, 0.7, 0.4)
+        self.pid_control = PID(3, .5, .125)#, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
+        self.pid_steering = PID(.6 , 1.2, .02, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
+        ####### PARAMETERS coming from Zeigler Nichols analisys
+        #self.pid_steering = PID(.6 , 1.2, .06, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
 
         # Define the low pass filter to be applied to steering error value
-        self.lpf_steer_error = LowPassFilter(0.2, 0.1)
+        self.steer_error_lpf = LowPassFilter(.75, .25)
+        self.steer_lpf = LowPassFilter(.5, .1)
 
         self.yaw_controller = YawController(kwargs["wheel_base"], kwargs["steer_ratio"], kwargs["min_speed"], kwargs["max_lat_accel"], kwargs["max_steer_angle"])
         self.brake_deadband = kwargs["brake_deadband"]
         self.time = None
 
         self.last_speed_target = 0.0
-        self.last_speed_target = 0.0
-        
+        self.last_steer_target = 0.0
+
     def control(self, *args, **kwargs):
 
         try:
@@ -36,7 +42,6 @@ class Controller(object):
         
             # get current/target velocities (linear and angular) from the received messages in the topics 		
             target_lin_vel = twist.twist.linear.x
-
             target_ang_vel = twist.twist.angular.z
                     
             current_lin_vel = current_velocity.twist.linear.x
@@ -50,32 +55,32 @@ class Controller(object):
             self.check_targets_for_reset(target_lin_vel, target_steer)
 
             current_time = rospy.get_time()
+
             if(self.time != None):
                 delta_t = current_time - self.time
                 
+                # Manage Throttle and Brake using a single PID and considering deadband value too
                 speed_err = target_lin_vel - current_lin_vel
-
-                # Execute step function for both the pids to get throttle, steering and brake controls
                 throttle_brake = self.pid_control.step(speed_err, delta_t)
-            
-                # set throttle and brake according to the throttle_brake pid output
-                throttle = max(0.0,throttle_brake)
-                # Consider the brake deadband value
-                #brake = max(0, -throttle_brake) + self.brake_deadband
-                brake = max(0.0, -throttle_brake)
 
+                throttle = max(0.0,throttle_brake)
+                brake = max(0.0, -throttle_brake)
                 if(brake < self.brake_deadband):
                     brake = 0.0
-
             
-                #steer_err = self.lpf_steer_error.filt(target_steer - current_steer)
+                # Manage Steer using the dedicated PID
+                steer_err_rough = target_steer - current_steer
+                steer_err = self.steer_error_lpf.filt(steer_err_rough)
+
+                if(CALIBRATION):
+                    self.pid_steering.log(steer_err, delta_t, "steer")
                 
-                steer_err = target_steer - current_steer
-            
-                steer = self.pid_steering.step(steer_err, delta_t)
-
-                #rospy.loginfo('Current PIDs target data:')
-                #rospy.loginfo('SpeedCurrent -> %f, SpeedTarget --> %f, SteerCurrent -> %f, SteerTarget --> %f', current_lin_vel, target_lin_vel, steer, target_steer)
+                steer_rough = self.pid_steering.step(steer_err, delta_t)
+                steer = self.steer_lpf.filt(steer_rough)
+                
+                if(CALIBRATION):
+                    rospy.loginfo('SpeedCurrent -> %f, SpeedTarget -> %f, SteerCurrent -> %f, SteerTarget -> %f', current_lin_vel, target_lin_vel, current_steer, target_steer)
+                    rospy.loginfo('Throttle_brake -> %f, Throttle -> %f, Brake -> %f, Steer -> %f, Steer_rough -> %f, error -> %f, error_rough -> %f ', throttle_brake, throttle, brake, steer, steer_rough, steer_err, steer_err_rough)            
 
                 self.time = current_time
 
@@ -85,8 +90,6 @@ class Controller(object):
                 return 0.0, 0.0, 0.0
         except Exception, e:
             print(e)
-            pass
-        #return 1., 0., 0.
 
     def check_targets_for_reset(self, target_lin_vel, target_steer):
         #################################
@@ -94,26 +97,27 @@ class Controller(object):
         #################################
          
          # Target Change control PID reset
-        if(False and self.last_speed_target != target_lin_vel):
+        if(PID_CONTROL_RESET_Target_CH and self.last_speed_target != target_lin_vel):
             self.pid_control.reset()
 
         # Trend change control PID reset
-        if(True and ((target_lin_vel > self.last_speed_target and self.pid_control.int_val < 0) or (target_lin_vel < self.last_speed_target and self.pid_control.int_val > 0))):
+        if(PID_CONTROL_RESET_Trend_CH and ((target_lin_vel > self.last_speed_target and self.pid_control.int_val < 0) or (target_lin_vel < self.last_speed_target and self.pid_control.int_val > 0))):
             self.pid_control.reset()
             #rospy.logwarn("PID RESETTED")
 
         self.last_speed_target = target_lin_vel
 
         #################################
-        # Reset pid_steer integral part --> CURRENTLY NOT USED
+        # Reset pid_steer integral part
         #################################
         # Target Change steer PID reset
-        if(False and self.last_steer_target != target_steer):
-            self.pid_steer.reset()
+        if(PID_STEER_RESET_Target_CH and self.last_steer_target != target_steer):
+            self.pid_steering.reset()
 
         # Trend change control PID reset
-        if(False and ((target_steer > self.last_steer_target and self.pid_control.int_val < 0) or (target_steer < self.last_steer_target and self.pid_steer.int_val > 0))):
-            self.pid_steer.reset()
+        if(PID_STEER_RESET_Trend_CH and ((target_steer > self.last_steer_target and self.pid_steering.int_val < 0) or (target_steer < self.last_steer_target and self.pid_steering.int_val > 0))):
+            self.pid_steering.int_val /= 2
+            #self.pid_steering.reset()
             #rospy.logwarn("PID RESETTED")
 
         self.last_steer_target = target_steer
