@@ -63,8 +63,8 @@ class WaypointUpdater(object):
             message_to_sent.header.stamp = rospy.Time.now()
             message_to_sent.header.frame_id = self.frame_id
             message_to_sent.waypoints = lookAheadWpts
-            rospy.logwarn("The last position is: %s", self.last_pos.position)
-            rospy.logwarn("The last wp_index is: %d", self.last_wp)
+            #rospy.logwarn("The last position is: %s", self.last_pos.position)
+            #rospy.logwarn("The last wp_index is: %d", self.last_wp)
             self.final_waypoints_pub.publish(message_to_sent)
        
     def nearest_wp(self, last_position, waypoints):
