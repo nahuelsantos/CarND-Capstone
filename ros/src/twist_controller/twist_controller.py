@@ -1,122 +1,134 @@
+#!/usr/bin/env python
+
 import rospy
-from pid import PID
-from yaw_controller import YawController
-from lowpass import LowPassFilter
-from std_msgs.msg import Float32
+from std_msgs.msg import Bool
+from styx_msgs.msg import Lane
+from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
+from geometry_msgs.msg import TwistStamped, PoseStamped
+import math
 
-GAS_DENSITY = 2.858
-ONE_MPH = 0.44704
+from twist_controller import Controller
 
-class Controller(object):
-    def __init__(self, *args, **kwargs):
-        
-        # Define the 2 PIDs: one for the throttle/brake control, the second one for the steering
-        self.pid_control = PID(3, .5, .125, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
-        self.pid_steering = PID(1 ,.0, .0)
+'''
+You can build this node only after you have built (or partially built) the `waypoint_updater` node.
 
-        #self.pid_control  = PID(5.0, 0.1, 0.02)
-        #self.pid_steering = PID(0.6, 0.7, 0.4)
+You will subscribe to `/twist_cmd` message which provides the proposed linear and angular velocities.
+You can subscribe to any other message that you find important or refer to the document for list
+of messages subscribed to by the reference implementation of this node.
 
-        # Define the low pass filter to be applied to steering error value
-        self.lpf_steer_error = LowPassFilter(0.2, 0.1)
+One thing to keep in mind while building this node and the `twist_controller` class is the status
+of `dbw_enabled`. While in the simulator, its enabled all the time, in the real car, that will
+not be the case. This may cause your PID controller to accumulate error because the car could
+temporarily be driven by a human instead of your controller.
 
-        self.yaw_controller = YawController(kwargs["wheel_base"], kwargs["steer_ratio"], kwargs["min_speed"], kwargs["max_lat_accel"], kwargs["max_steer_angle"])
-        self.brake_deadband = kwargs["brake_deadband"]
-        self.time = None
+We have provided two launch files with this node. Vehicle specific values (like vehicle_mass,
+wheel_base) etc should not be altered in these files.
 
-        self.last_speed_target = 0.0
-        self.last_speed_target = 0.0
-        
-    def control(self, *args, **kwargs):
+We have also provided some reference implementations for PID controller and other utility classes.
+You are free to use them or build your own.
 
+Once you have the proposed throttle, brake, and steer values, publish it on the various publishers
+that we have created in the `__init__` function.
+
+'''
+
+class DBWNode(object):
+    def __init__(self):
+        rospy.init_node('dbw_node')
+
+        vehicle_mass = rospy.get_param('~vehicle_mass', 1736.35)
+        fuel_capacity = rospy.get_param('~fuel_capacity', 13.5)
+        brake_deadband = rospy.get_param('~brake_deadband', .1)
+        decel_limit = rospy.get_param('~decel_limit', -5)
+        accel_limit = rospy.get_param('~accel_limit', 1.)
+        wheel_radius = rospy.get_param('~wheel_radius', 0.2413)
+        #########################
+        # Used for the yaw_controller Item
+        wheel_base = rospy.get_param('~wheel_base', 2.8498)
+        steer_ratio = rospy.get_param('~steer_ratio', 14.8)
+        max_lat_accel = rospy.get_param('~max_lat_accel', 3.)
+        max_steer_angle = rospy.get_param('~max_steer_angle', 8.)
+        min_speed = 0.0
+        #########################
+        self.dbw_en = False
+
+
+        self.steer_pub = rospy.Publisher('/vehicle/steering_cmd',SteeringCmd, queue_size=1)
+        self.throttle_pub = rospy.Publisher('/vehicle/throttle_cmd', ThrottleCmd, queue_size=1)
+        self.brake_pub = rospy.Publisher('/vehicle/brake_cmd', BrakeCmd, queue_size=1)
+
+        params = {"wheel_base": wheel_base, "steer_ratio": steer_ratio, "min_speed": min_speed, "max_lat_accel": max_lat_accel, "max_steer_angle": max_steer_angle, "brake_deadband": brake_deadband, "accel_limit": accel_limit, "decel_limit": decel_limit}
+
+        self.controller = Controller(**params)
+
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb)
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_cb)
+        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
+
+        rate = rospy.Rate(50) # 50Hz
+        while not rospy.is_shutdown():
+            try:
+                self.loop()
+                rate.sleep()
+            except Exception, e:
+                print(e)
+                
+
+    def loop(self):
+
+        # EAFP approach to attributes access. The access to self.dbw_en, self.twist_cmd and self.current_velocity will throw an exception if these values were never populated (messages never sent in the topics) 
         try:
-            twist = kwargs['twist_cmd']
-            current_velocity = kwargs['current_vel']
-        
-            # get current/target velocities (linear and angular) from the received messages in the topics 		
-            target_lin_vel = twist.twist.linear.x
-
-            target_ang_vel = twist.twist.angular.z
-                    
-            current_lin_vel = current_velocity.twist.linear.x
-            current_ang_vel = current_velocity.twist.angular.z
-        
-            # convert angular speed (current and target) to steering angle (current and target)
-            current_steer = self.yaw_controller.get_steering(current_lin_vel, current_ang_vel, current_lin_vel)
-            target_steer = self.yaw_controller.get_steering(target_lin_vel, target_ang_vel, target_lin_vel)		
-
-            # Used to reset PIDs integral component depending on the target change
-            self.check_targets_for_reset(target_lin_vel, target_steer)
-
-            current_time = rospy.get_time()
-            if(self.time != None):
-                delta_t = current_time - self.time
+            # Execute the controller routine only if the dbw_enable signal is == True
+            if(self.dbw_en):
+                parameters = {'twist_cmd': self.twist_cmd,
+                              'current_vel': self.current_velocity}
                 
-                speed_err = target_lin_vel - current_lin_vel
+                throttle, brake, steer = self.controller.control(**parameters)
 
-                # Execute step function for both the pids to get throttle, steering and brake controls
-                throttle_brake = self.pid_control.step(speed_err, delta_t)
-            
-                # set throttle and brake according to the throttle_brake pid output
-                throttle = max(0.0,throttle_brake)
-                # Consider the brake deadband value
-                #brake = max(0, -throttle_brake) + self.brake_deadband
-                brake = max(0.0, -throttle_brake)
-
-                if(brake < self.brake_deadband):
-                    brake = 0.0
-
-            
-                #steer_err = self.lpf_steer_error.filt(target_steer - current_steer)
-                
-                steer_err = target_steer - current_steer
-            
-                steer = self.pid_steering.step(steer_err, delta_t)
-
-                #rospy.loginfo('Current PIDs target data:')
-                #rospy.loginfo('SpeedCurrent -> %f, SpeedTarget --> %f, SteerCurrent -> %f, SteerTarget --> %f', current_lin_vel, target_lin_vel, steer, target_steer)
-
-                self.time = current_time
-
-                return throttle, brake, steer
+                #self.publish(throttle, brake, steer)
+                self.publish(throttle, brake, steer)
+                #self.publish(5.0, 0.0, 0.0)
+            # If dbw_enable==False, the car is controlled by the driver and the controller need to be resetted.
             else:
-                self.time = current_time
-                return 0.0, 0.0, 0.0
-        except Exception, e:
-            print(e)
-            pass
-        #return 1., 0., 0.
+                self.controller.reset()
+            
+        except AttributeError:
+            rospy.logwarn("First messages from topics 'dbw_enabled' and/or 'twist_cmd' and/or 'current_velocity' still missing")
+            pass 
+            
 
-    def check_targets_for_reset(self, target_lin_vel, target_steer):
-        #################################
-        # Reset pid_control integral part
-        #################################
-         
-         # Target Change control PID reset
-        if(False and self.last_speed_target != target_lin_vel):
-            self.pid_control.reset()
 
-        # Trend change control PID reset
-        if(True and ((target_lin_vel > self.last_speed_target and self.pid_control.int_val < 0) or (target_lin_vel < self.last_speed_target and self.pid_control.int_val > 0))):
-            self.pid_control.reset()
-            #rospy.logwarn("PID RESETTED")
+    def publish(self, throttle, brake, steer):
 
-        self.last_speed_target = target_lin_vel
+        tcmd = ThrottleCmd()
+        tcmd.enable = True
+        tcmd.pedal_cmd_type = ThrottleCmd.CMD_PERCENT
+        tcmd.pedal_cmd = throttle
+        self.throttle_pub.publish(tcmd)
 
-        #################################
-        # Reset pid_steer integral part --> CURRENTLY NOT USED
-        #################################
-        # Target Change steer PID reset
-        if(False and self.last_steer_target != target_steer):
-            self.pid_steer.reset()
+        scmd = SteeringCmd()
+        scmd.enable = True
+        scmd.steering_wheel_angle_cmd = steer
+        self.steer_pub.publish(scmd)
 
-        # Trend change control PID reset
-        if(False and ((target_steer > self.last_steer_target and self.pid_control.int_val < 0) or (target_steer < self.last_steer_target and self.pid_steer.int_val > 0))):
-            self.pid_steer.reset()
-            #rospy.logwarn("PID RESETTED")
+        bcmd = BrakeCmd()
+        bcmd.enable = True
+        bcmd.pedal_cmd_type = BrakeCmd.CMD_TORQUE
+        bcmd.pedal_cmd = brake
+        self.brake_pub.publish(bcmd)
 
-        self.last_steer_target = target_steer
 
-    def reset(self):
-        self.pid_control.reset()
-        self.pid_steering.reset()
+    def dbw_enabled_cb(self, dbw_en):
+        print("Received dbw command")
+        self.dbw_en = dbw_en
+
+    def twist_cmd_cb(self, twist):
+        #print("Received twist command")
+        self.twist_cmd = twist
+
+    def current_velocity_cb(self, vel):
+        #print("Received vel command")
+        self.current_velocity = vel
+
+if __name__ == '__main__':
+    DBWNode()
