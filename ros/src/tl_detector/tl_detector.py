@@ -181,11 +181,36 @@ class TLDetector(object):
 
         except (tf.Exception, tf.LookupException, tf.ConnectivityException):
             rospy.logerr("Failed to find camera to map transform")
+            return (0, 0)
 
         #TODO Use tranform and rotation to calculate 2D position of light in image
+        cx = image_width/2
+        cy = image_height/2
 
-        x = 0
-        y = 0
+        rpy = tf.transformations.euler_from_quaternion(rot)
+        yaw = rpy[2]
+
+        (ptx, pty, ptz) = (point_in_world.x, point_in_world.y, point_in_world.z)
+
+        point_to_cam = (ptx * math.cos(yaw) - pty * math.sin(yaw),
+                        ptx * math.sin(yaw) + pty * math.cos(yaw),
+                        ptz)
+        point_to_cam = [sum(x) for x in zip(point_to_cam, trans)]
+
+        ##########################################################################################
+        # Tweak to get it working on the simulator
+        if fx < 10:
+            fx = 1400
+            fy = 2000
+            cx = image_width/2
+            cy = image_height
+        ##########################################################################################
+
+        x = -point_to_cam[1] * fx / point_to_cam[0];
+        y = -point_to_cam[2] * fy / point_to_cam[0];
+
+        x = int(x + cx)
+        y = int(y + cy)
 
         return (x, y)
 
@@ -199,7 +224,6 @@ class TLDetector(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
-        return light.state
 
         if(not self.has_image):
             self.prev_light_loc = None
@@ -210,6 +234,8 @@ class TLDetector(object):
         x, y = self.project_to_image_plane(light.pose.pose.position)
 
         #TODO use light location to zoom in on traffic light in image
+        margin = 100
+        cv_image = cv_image[y-margin:y+margin,x-margin:x+margin]
 
         #Get classification
         return self.light_classifier.get_classification(cv_image)
