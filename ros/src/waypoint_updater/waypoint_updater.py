@@ -22,7 +22,10 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 50 # Number of waypoints we will publish. You can change this number
-
+# User defined constraint
+BufferTime = .6 # in second
+MIN_D = 25 # in meter, some random number
+MAX_D = 38 # in meter, some random number
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -32,7 +35,7 @@ class WaypointUpdater(object):
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
@@ -41,9 +44,11 @@ class WaypointUpdater(object):
         self.base_waypoints = None
         self.last_wp = None
         self.frame_id = None
+        self.traffic_light_index = -1
+        self.traffic_light_time = rospy.get_time()
+        # loop
         self.loop()
-        # rospy.spin()
-
+       
     def loop(self):
     	# published final wayponts
 
@@ -65,6 +70,30 @@ class WaypointUpdater(object):
 				message_to_sent.header.stamp = rospy.Time.now()
 				message_to_sent.header.frame_id = self.frame_id
 				message_to_sent.waypoints = lookAheadWpts
+
+                # considers the traffic light position
+                # use two conditions to determine when to slow down and when to go full throttle
+                legit_ahead = False
+                new_traffic = False
+
+                # when traffic light is first seen
+                if self.traffic_light_time < rospy.get_time() - BufferTime:
+                    new_traffic = True
+                # when traffic light is ahead
+                if self.traffic_light_index > self.last_wp:
+                    # calculate the distance between car and the light
+                    d_car_light = self.distance(self.base_waypoints, self.last_wp, self.traffic_light_index)
+                    # determine if this distance falls within a suitable range
+                    if d_car_light > MIN_D and d_car_light < MAX_D:
+                        legit_ahead = True
+
+                # when traffic light is first seen and is ahead
+                if new_traffic == True and legit_ahead == True:
+                    # slow down gradually
+                    for waypoint in lookAheadWpts:
+                        wp_vel = self.get_waypoint_velocity(waypoint)
+                        
+
 				self.final_waypoints_pub.publish(message_to_sent)
 
     def pose_cb(self, msg):
@@ -93,7 +122,8 @@ class WaypointUpdater(object):
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
-        pass
+        self.traffic_light_index = msg.data
+        self.traffic_light_time = rospy.get_time()
 
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will implement it later
