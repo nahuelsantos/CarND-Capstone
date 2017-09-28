@@ -24,6 +24,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 LOOKAHEAD_WPS = 50 # Number of waypoints we will publish. You can change this number
 # User defined constraint
 BufferTime = .6 # in second
+RefSpeed = 4.4
 MIN_D = 25 # in meter, some random number
 MAX_D = 38 # in meter, some random number
 
@@ -62,14 +63,6 @@ class WaypointUpdater(object):
 				# fetch next LOOKAHEAD number of waypoints
 				ahead = min(len(self.base_waypoints),self.last_wp+LOOKAHEAD_WPS)
 				lookAheadWpts = self.base_waypoints[self.last_wp:ahead]
-				# construct speed for lookAheadWpts
-				for waypoint in lookAheadWpts:
-				    waypoint.twist.twist.linear.x = 4.4
-				# construct message to be sent
-				message_to_sent = Lane()
-				message_to_sent.header.stamp = rospy.Time.now()
-				message_to_sent.header.frame_id = self.frame_id
-				message_to_sent.waypoints = lookAheadWpts
 
                 # considers the traffic light position
                 # use two conditions to determine when to slow down and when to go full throttle
@@ -90,9 +83,20 @@ class WaypointUpdater(object):
                 # when traffic light is first seen and is ahead
                 if new_traffic == True and legit_ahead == True:
                     # slow down gradually
-                    for waypoint in lookAheadWpts:
-                        wp_vel = self.get_waypoint_velocity(waypoint)
-                        
+                    for index, waypoint in enumerate(lookAheadWpts):
+                        wp_traffic_d = self.distance(self.base_waypoints, index, self.traffic_light_index)
+                        new_wp_vel = RefSpeed*(wp_traffic_d - MIN_D) / (MAX_D - MIN_D)
+                     	waypoint.twist.twist.linear.x = new_wp_vel
+                else:
+                	# drive as reference speed
+					for waypoint in lookAheadWpts:
+				    	waypoint.twist.twist.linear.x = RefSpeed
+				    	
+				# construct message to be sent
+				message_to_sent = Lane()
+				message_to_sent.header.stamp = rospy.Time.now()
+				message_to_sent.header.frame_id = self.frame_id
+				message_to_sent.waypoints = lookAheadWpts
 
 				self.final_waypoints_pub.publish(message_to_sent)
 
