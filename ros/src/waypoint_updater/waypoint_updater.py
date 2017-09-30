@@ -23,10 +23,10 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 LOOKAHEAD_WPS = 50 # Number of waypoints we will publish. You can change this number
 # User defined constraint
-BufferTime = .6 # in second
-RefSpeed = 4.4
-MIN_D = 25 # in meter, some random number
-MAX_D = 38 # in meter, some random number
+BufferTime = 1.1 # when seen traffic light, time to react, in seconds
+RefSpeed = 10 # set full throttle speed to 10 mph
+MIN_D = 25 # minimum distance before reaching the traffic light
+MAX_D = 38 # maximum distance before reaching the traffic light
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -65,8 +65,8 @@ class WaypointUpdater(object):
                 ahead = min(len(self.base_waypoints),self.last_wp+LOOKAHEAD_WPS)
                 lookAheadWpts = self.base_waypoints[self.last_wp:ahead]
                 # construct default speed for lookAheadWpts
-                for waypoint in lookAheadWpts:
-                    waypoint.twist.twist.linear.x = RefSpeed
+                # for waypoint in lookAheadWpts:
+                #     waypoint.twist.twist.linear.x = RefSpeed
 
                 # considers the traffic light position
                 # use two conditions to determine when to slow down and when to go full throttle
@@ -91,8 +91,8 @@ class WaypointUpdater(object):
                         for index, waypoint in enumerate(lookAheadWpts):
                             wp_vel = self.get_waypoint_velocity(waypoint)
                             wp_traffic_d = self.distance(self.base_waypoints, index, self.traffic_light_index)
-                            if wp_traffic_d > MIN_D + 7: # Added some random number so it start braking ahead
-                                # does some linear degration 
+                            if wp_traffic_d > MIN_D + 5: # Added some random number so it start braking ahead
+                                # velocity does some linear degration 
                                 new_wp_vel = wp_vel*(wp_traffic_d - MIN_D) / (MAX_D - MIN_D)
                                 waypoint.twist.twist.linear.x = new_wp_vel
 
@@ -112,6 +112,14 @@ class WaypointUpdater(object):
        
     def nearest_wp(self, last_position, waypoints):
         """find nearest waypoint index to the current location"""
+        # if just starting
+        if self.last_wp == None or self.last_pos == None:
+            return self.nearest_wp_helper(last_position, waypoints)
+        else:
+            # search for a small region
+            return self.nearest_wp_helper(last_position, waypoints[self.last_wp-15:self.last_wp+15])
+            
+    def nearest_wp_helper(self, last_position, waypoints):
         dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
         nearest_distance = 9999;
         nearest_index = -1;
