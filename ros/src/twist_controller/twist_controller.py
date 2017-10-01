@@ -80,19 +80,19 @@ class Controller(object):
                 steer_err_rough = target_steer - self.steer_error_lpf.filt(current_steer)
                 steer_err = steer_err_rough
 
-                # if(CALIBRATION_LOG):
-                #     self.pid_steering.log(steer_err, delta_t, "steer")
+                if(CALIBRATION_LOG):
+                    self.pid_steering.log(steer_err, delta_t, "steer")
                 
                 steer_rough = self.pid_steering.step(steer_err, delta_t)
                 steer = self.steer_lpf.filt(steer_rough)
                 
-                # if(CALIBRATION_LOG):
-                #     rospy.loginfo('SpeedCurrent -> %f, SpeedTarget -> %f, SteerCurrent -> %f, SteerTarget -> %f', current_lin_vel, target_lin_vel, current_steer, target_steer)
-                #     rospy.loginfo('Throttle_brake -> %f, Throttle -> %f, Brake -> %f, Steer -> %f, Steer_rough -> %f, error -> %f, error_rough -> %f ', throttle_brake, throttle, brake, steer, steer_rough, steer_err, steer_err_rough)            
+                if(CALIBRATION_LOG):
+                    rospy.loginfo('SpeedCurrent -> %f, SpeedTarget -> %f, SteerCurrent -> %f, SteerTarget -> %f', current_lin_vel, target_lin_vel, current_steer, target_steer)
+                    rospy.loginfo('Throttle_brake -> %f, Throttle -> %f, Brake -> %f, Steer -> %f, Steer_rough -> %f, error -> %f, error_rough -> %f ', throttle_brake, throttle, brake, steer, steer_rough, steer_err, steer_err_rough)            
 
                 self.time = current_time
 
-                return throttle, brake, target_steer # changed steer to target_steer
+                return throttle, brake, steer
             else:
                 self.time = current_time
                 return 0.0, 0.0, 0.0
