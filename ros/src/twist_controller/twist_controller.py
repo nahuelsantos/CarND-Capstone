@@ -63,7 +63,7 @@ class Controller(object):
             current_time = rospy.get_time()
 
             if(self.time != None):
-                delta_t = current_time - self.time
+                delta_t = current_time - self.time + 1e-6
                 
                 # Manage Throttle and Brake using a single PID and considering deadband value too
                 speed_err = target_lin_vel - current_lin_vel
