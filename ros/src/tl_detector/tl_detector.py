@@ -101,32 +101,23 @@ class TLDetector(object):
         """
         return math.sqrt((pose_from.position.x - pose_to.position.x)**2 + (pose_from.position.y - pose_to.position.y)**2)
 
-    def get_yaw_difference(self, pose_from, pose_to):
-        """Compute the angle between two positions given the orientation
-        of the starting point_in_world
+    @staticmethod
+    def get_yaw(pose):
+        """Return the yaw of the input
         Args:
-            pose_from: pose from (where the orientation is taken into account)
-            pose_to: pose to
+            pose (Pose): position to compute the yaw
         Returns:
-            float: angle in radians
+            float: yaw angle
         """
         quaternion = (
-            pose_from.orientation.x,
-            pose_from.orientation.y,
-            pose_from.orientation.z,
-            pose_from.orientation.w
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w
         )
-        pose_from_orientation = tf.transformations.euler_from_quaternion(quaternion)
+        euler = tf.transformations.euler_from_quaternion(quaternion)
 
-        quaternion = (
-            pose_to.orientation.x,
-            pose_to.orientation.y,
-            pose_to.orientation.z,
-            pose_to.orientation.w
-        )
-        pose_to_orientation = tf.transformations.euler_from_quaternion(quaternion)
-
-        return pose_from_orientation[2] - pose_to_orientation[2]
+        return euler[2]
 
     def get_closest_waypoint(self, pose):
         """Identifies the closest path waypoint to the given position
@@ -144,13 +135,23 @@ class TLDetector(object):
             return
 
         min_dist = None
+        idx = 0
         wp = None
-        for i in range(len(self.waypoints.waypoints)):
-          dist = self.distance(pose, self.waypoints.waypoints[i].pose.pose)
+        for i, w in enumerate(self.waypoints.waypoints):
+          dist = self.distance(pose, w.pose.pose)
           if min_dist is None or dist < min_dist:
               min_dist = dist
-              wp = i
-        return wp
+              idx = i
+              wp = w
+        heading = math.atan2((w.pose.pose.position.y - pose.position.y),
+                             (w.pose.pose.position.x - pose.position.x))
+        yaw = self.get_yaw(pose)
+        angle = math.fabs(yaw-heading)
+        if angle > math.pi/4.:
+            idx += 1
+            if idx >= len(self.waypoints.waypoints):
+                idx = 0
+        return idx
 
 
     def project_to_image_plane(self, point_in_world):
@@ -259,18 +260,22 @@ class TLDetector(object):
             if(car_position):
                 #TODO find the closest visible traffic light (if one exists)
                 min_dist = None
-                for i in range(len(self.lights)):
-                    dist = self.distance(self.pose.pose, self.lights[i].pose.pose)
+                idx = 0
+                for i, l in enumerate(self.lights):
+                    dist = self.distance(self.pose.pose, l.pose.pose)
                     if min_dist is None or dist < min_dist:
-                        # Is this light in the viewport of the car?
-                        angle = self.get_yaw_difference(self.pose.pose, self.lights[i].pose.pose)
-                        if abs(angle) <= math.pi/4:
-                            min_dist = dist
-                            idx = i
-                            light_wp = self.get_closest_waypoint(self.lights[i].pose.pose)
-
+                        min_dist = dist
+                        idx = i
+                lwp = self.get_closest_waypoint(self.lights[idx].pose.pose)
+                cwp = self.get_closest_waypoint(self.pose.pose)
+                # Car waypoint is greater than light waypoint?
+                if lwp <= cwp:
+                    idx += 1
+                    if idx >= len(self.lights):
+                        idx = 0
                 if min_dist is not None:
                     light = self.lights[idx]
+                    light_wp = self.get_closest_waypoint(light.pose.pose)
 
         if light:
             state = self.get_light_state(light)
