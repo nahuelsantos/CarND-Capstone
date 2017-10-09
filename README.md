@@ -2,6 +2,7 @@ This is the project repo for the final project of the Udacity Self-Driving Car N
 
 ### TEAM: Wacky Racers
 *please beware this is a initial submission, we are not done testing the code yet. I haven't yet asked about my team's udacity's account. I've only put down mine for this submission.* 
+
 |Team Member|Udacity Account Email Address|Role|
 |-----------|-------------|----|
 |Nahuel Santos|nahuelsantos@gmail.com|Lead|
