@@ -7,6 +7,8 @@ from styx_msgs.msg import Lane
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from light_classification.tl_classifier import TLClassifier
+from std_msgs.msg import Header
+from geometry_msgs.msg import PoseStamped, Quaternion, TwistStamped
 import tf
 import cv2
 import yaml
@@ -242,6 +244,23 @@ class TLDetector(object):
         #Get classification
         return self.light_classifier.get_classification(cv_image)
 
+    @staticmethod
+    def create_pose(x, y, z, yaw=0.):
+        pose = PoseStamped()
+
+        pose.header = Header()
+        pose.header.stamp = rospy.Time.now()
+        pose.header.frame_id = '/world'
+
+        pose.pose.position.x = x
+        pose.pose.position.y = y
+        pose.pose.position.z = z
+
+        q = tf.transformations.quaternion_from_euler(0., 0., math.pi * yaw/180.)
+        pose.pose.orientation = Quaternion(*q)
+
+        return pose
+
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its
             location and color
@@ -275,11 +294,13 @@ class TLDetector(object):
                         idx = 0
                 if min_dist is not None:
                     light = self.lights[idx]
-                    light_wp = self.get_closest_waypoint(light.pose.pose)
+                    sl_x, sl_y = stop_line_positions[idx]
+                    stop_line_pose = self.create_pose(sl_x, sl_y, 0.0)
+                    stop_line_wp = self.get_closest_waypoint(stop_line_pose.pose)
 
         if light:
             state = self.get_light_state(light)
-            return light_wp, state
+            return stop_line_wp, state
 # Comment next line to avoid "cleaning" the waypoints
 #        self.waypoints = None
         return -1, TrafficLight.UNKNOWN
