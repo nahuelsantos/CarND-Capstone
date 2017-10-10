@@ -44,7 +44,18 @@ class TLDetector(object):
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         self.bridge = CvBridge()
-        self.light_classifier = TLClassifier()
+        
+        traffic_light_classifier_config = rospy.get_param("~traffic_light_classifier")
+        
+        # Load the right model depending on the param loaded in the launch
+        if traffic_light_classifier_config == "REAL":
+            print("Loaded classifier for real world use")
+            model_name = "squeezeNet_real.frozen"
+        if traffic_light_classifier_config == "SIM":
+            print("Loaded classifier for simulator use")
+            model_name = "squeezeNet_sim.frozen"
+
+        self.light_classifier = TLClassifier(model_name)
         self.listener = tf.TransformListener()
 
         self.state = TrafficLight.UNKNOWN
@@ -227,7 +238,7 @@ class TLDetector(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
-        return light.state
+        #return light.state
 
         if(not self.has_image):
             self.prev_light_loc = None
@@ -238,7 +249,9 @@ class TLDetector(object):
         x, y = self.project_to_image_plane(light.pose.pose.position)
 
         #TODO use light location to zoom in on traffic light in image
-        margin = 100
+        # margin = 100
+        # Corrected to be adapted with the squeeze net configuration
+        margin = 112
         cv_image = cv_image[y-margin:y+margin,x-margin:x+margin]
 
         #Get classification
