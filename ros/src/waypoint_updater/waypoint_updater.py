@@ -22,12 +22,13 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 10 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 20 # Number of waypoints we will publish. You can change this number
 # User defined constraint
-BufferTime = 1.8 # when seen traffic light, time to react, in seconds
-MIN_D = 20 # minimum distance before reaching the traffic light
-MAX_D = 55 # maximum distance before reaching the traffic light
+BufferTime = 1.3 # when seen traffic light, time to react, in seconds
+MIN_D = 0.5 # minimum distance before reaching the traffic light
+MAX_D = 40 # maximum distance before reaching the traffic light
 RefSpeed = 6.2
+STOP_LINE = 6
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -98,14 +99,12 @@ class WaypointUpdater(object):
                     for index, waypoint in enumerate(lookAheadWpts):
                         wp_vel = self.get_waypoint_velocity(self.base_waypoints[index + 1 + self.last_wp])
                         wp_traffic_d = self.distance(self.base_waypoints, index + 1 +self.last_wp, self.traffic_light_index)
-                        speed = 0
-                        if wp_traffic_d > MIN_D: # Added some random number so it start braking ahead
-                            speed = wp_vel ** (-1/(wp_traffic_d - MIN_D))
-                            rospy.logwarn("car slowing down")
-                            if speed < 2.2:
-                                waypoint.twist.twist.linear.x = 0
-                            else:
-                                waypoint.twist.twist.linear.x = speed                          
+                        speed = self.speed_before_traffic(wp_traffic_d)
+                        rospy.logwarn("car slowing down")
+                        if speed < 0.5:
+                            waypoint.twist.twist.linear.x = 0
+                        else:
+                            waypoint.twist.twist.linear.x = speed                          
 
             # construct message to be sent
             message_to_sent = Lane()
@@ -113,6 +112,14 @@ class WaypointUpdater(object):
             message_to_sent.header.frame_id = self.frame_id
             message_to_sent.waypoints = lookAheadWpts
             self.final_waypoints_pub.publish(message_to_sent)
+
+    def speed_before_traffic(self, d_car_light):
+        # d_car_light = self.distance(self.base_waypoints, self.last_wp, self.traffic_light_index)
+        # default speed to return
+        speed = 0
+        if d_car_light > STOP_LINE:
+            speed = (d_car_light - MIN_D) / (MAX_D-MIN_D)
+        return speed
 
     def pose_cb(self, msg):
         # TODO: Implement
