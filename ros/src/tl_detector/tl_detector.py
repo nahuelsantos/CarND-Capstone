@@ -7,6 +7,8 @@ from styx_msgs.msg import Lane
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 from light_classification.tl_classifier import TLClassifier
+from std_msgs.msg import Header
+from geometry_msgs.msg import PoseStamped, Quaternion, TwistStamped
 import tf
 import cv2
 import yaml
@@ -42,7 +44,18 @@ class TLDetector(object):
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
 
         self.bridge = CvBridge()
-        self.light_classifier = TLClassifier()
+        
+        traffic_light_classifier_config = rospy.get_param("~traffic_light_classifier")
+        
+        # Load the right model depending on the param loaded in the launch
+        if traffic_light_classifier_config == "REAL":
+            print("Loaded classifier for real world use")
+            model_name = "squeezeNet_real.frozen"
+        if traffic_light_classifier_config == "SIM":
+            print("Loaded classifier for simulator use")
+            model_name = "squeezeNet_sim.frozen"
+
+        self.light_classifier = TLClassifier(model_name)
         self.listener = tf.TransformListener()
 
         self.state = TrafficLight.UNKNOWN
@@ -225,7 +238,7 @@ class TLDetector(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
-        return light.state
+        #return light.state
 
         if(not self.has_image):
             self.prev_light_loc = None
@@ -236,11 +249,30 @@ class TLDetector(object):
         x, y = self.project_to_image_plane(light.pose.pose.position)
 
         #TODO use light location to zoom in on traffic light in image
-        margin = 100
+        # margin = 100
+        # Corrected to be adapted with the squeeze net configuration
+        margin = 112
         cv_image = cv_image[y-margin:y+margin,x-margin:x+margin]
 
         #Get classification
         return self.light_classifier.get_classification(cv_image)
+
+    @staticmethod
+    def create_pose(x, y, z, yaw=0.):
+        pose = PoseStamped()
+
+        pose.header = Header()
+        pose.header.stamp = rospy.Time.now()
+        pose.header.frame_id = '/world'
+
+        pose.pose.position.x = x
+        pose.pose.position.y = y
+        pose.pose.position.z = z
+
+        q = tf.transformations.quaternion_from_euler(0., 0., math.pi * yaw/180.)
+        pose.pose.orientation = Quaternion(*q)
+
+        return pose
 
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its
@@ -275,11 +307,13 @@ class TLDetector(object):
                         idx = 0
                 if min_dist is not None:
                     light = self.lights[idx]
-                    light_wp = self.get_closest_waypoint(light.pose.pose)
+                    sl_x, sl_y = stop_line_positions[idx]
+                    stop_line_pose = self.create_pose(sl_x, sl_y, 0.0)
+                    stop_line_wp = self.get_closest_waypoint(stop_line_pose.pose)
 
         if light:
             state = self.get_light_state(light)
-            return light_wp, state
+            return stop_line_wp, state
 # Comment next line to avoid "cleaning" the waypoints
 #        self.waypoints = None
         return -1, TrafficLight.UNKNOWN
