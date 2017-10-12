@@ -16,7 +16,7 @@ PID_STEER_RESET_Target_CH_EN = False
 PID_STEER_RESET_Trend_CH_EN = True
 PID_STEER_RESET_Target_Invertion_EN = True 
 PID_CONTROL_MIN_RESET_EN = True
-PID_CONTROL_MIN_RESET_TH = 0.03
+PID_CONTROL_MIN_RESET_TH = 0.05
 CALIBRATION_PARAMS = False
 CALIBRATION_LOG = False
 USE_PID_FOR_STEERING = True
@@ -91,8 +91,11 @@ class Controller(object):
                     self.pid_steering.log(steer_err, delta_t, "steer") # Not Used in the current implementation
                 
                 steer_rough = self.pid_steering.step(steer_err, delta_t) # Not Used in the current implementation
-                steer = self.steer_lpf.filt(steer_rough) # Not Used in the current implementation
-                
+                steer = 0
+                if (throttle != 0 or target_lin_vel > 0.5):
+                    steer = self.steer_lpf.filt(steer_rough) # Not Used in the current implementation
+                else:
+                    self.pid_steering.reset()
                 # steer_err_rough = target_steer - self.steer_error_lpf.filt(current_steer)
                 if(CALIBRATION_LOG): 
                     rospy.loginfo('SpeedCurrent -> %f, SpeedTarget -> %f, SteerCurrent -> %f, SteerTarget -> %f, SteerCurrentFilt -> %f, Target_angular_speed -> %f', 
