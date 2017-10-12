@@ -10,35 +10,44 @@ from std_msgs.msg   import Float32
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
 
-PID_CONTROL_RESET_Trend_CH_EN = True
+PID_CONTROL_RESET_Trend_CH_EN = False
 PID_CONTROL_RESET_Target_CH_EN = False
 PID_STEER_RESET_Target_CH_EN = False
 PID_STEER_RESET_Trend_CH_EN = True
 PID_STEER_RESET_Target_Invertion_EN = True 
 PID_CONTROL_MIN_RESET_EN = True
-PID_CONTROL_MIN_RESET_TH = 0.05
+PID_CONTROL_MIN_RESET_TH = 0.5
 CALIBRATION_PARAMS = False
 CALIBRATION_LOG = False
-USE_PID_FOR_STEERING = True
 
 class Controller(object):
     def __init__(self, *args, **kwargs):
         
-        ############# Define the 2 PIDs: one for the throttle/brake control, the second one for the steering
+        # Define the 2 PIDs: one for the throttle/brake control, the second one for the steering
+        #self.pid_control = PID(3, .5, .125)#, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
         self.pid_control = PID(5, .45, .125)#, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
-        ####### PARAMETERS coming from Zeigler Nichols analisys
-        #self.pid_steering = PID(.6 , 1.2, .06, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
         # PID Steer Ku --> 2.5 Tu --> 0.6(30samples at 0.02s) 
+        ## self.pid_steering = PID(1.5 , 3, .0675, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
+        ## self.pid_steering = PID(.375 , 1.25, .028, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
+        # self.pid_steering = PID(.475 , 1.25, .028, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
+        # self.pid_steering = PID(.55 , 1.2, .020, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
         self.pid_steering = PID(.75 , 1.5, .0332, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
         
-        ####### Define the low pass filter to be applied to steering target value
-        self.steer_error_lpf = LowPassFilter(.4, .1) # Not Used in the current implementation
-        self.steer_lpf = LowPassFilter(.6, .1) # Not Used in the current implementation
-        self.steer_target_lpf = LowPassFilter(.3, .1)
+        #self.pid_steering = PID(.6 , 1.2, .02, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
+        ####### PARAMETERS coming from Zeigler Nichols analisys
+        #self.pid_steering = PID(.6 , 1.2, .06, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
+
+        # Define the low pass filter to be applied to steering error value
+        # self.steer_error_lpf = LowPassFilter(.5, .1)
+        self.steer_error_lpf = LowPassFilter(.4, .1)
+
+        # self.steer_lpf = LowPassFilter(.5, .1)
+        self.steer_lpf = LowPassFilter(.6, .1)
+
+        self.steer_target_lpf = LowPassFilter(.2, .1)
 
         self.max_steer_angle = kwargs["max_steer_angle"]
         self.yaw_controller = YawController(kwargs["wheel_base"], kwargs["steer_ratio"], kwargs["min_speed"], kwargs["max_lat_accel"], self.max_steer_angle)
-
         self.brake_deadband = kwargs["brake_deadband"]
         self.time = None
 
@@ -52,19 +61,19 @@ class Controller(object):
             twist = kwargs['twist_cmd']
             current_velocity = kwargs['current_vel']
         
-            ####### Get current/target velocities (linear and angular) from the received messages in the topics 		
+            #### Get current/target velocities (linear and angular) from the received messages in the topics 		
             target_lin_vel = twist.twist.linear.x
             target_ang_vel = twist.twist.angular.z
                     
             current_lin_vel = current_velocity.twist.linear.x
             current_ang_vel = current_velocity.twist.angular.z
-            ####### Convert angular speed (current and target) to steering angle (current and target)
+        
+            #### Convert angular speed (current and target) to steering angle (current and target)
             current_steer = self.yaw_controller.get_steering(current_lin_vel, current_ang_vel, current_lin_vel)
             target_steer = self.yaw_controller.get_steering(target_lin_vel, target_ang_vel, current_lin_vel)
-
-            #target_steer = self.steer_target_lpf.filt(target_steer)
-            #target_steer = max(-self.max_steer_angle,min(self.max_steer_angle,target_steer))
-            ####### Used to reset PIDs integral component depending on the target change
+            # target_steer = self.steer_target_lpf.filt(target_steer)
+            target_steer = max(-self.max_steer_angle,min(self.max_steer_angle,target_steer))
+            #### Used to reset PIDs integral component depending on the target change
             self.check_targets_for_reset(target_lin_vel, target_steer)
 
             current_time = rospy.get_time()
@@ -77,37 +86,33 @@ class Controller(object):
                 throttle_brake = self.pid_control.step(speed_err, delta_t)
 
                 throttle = max(0.0,throttle_brake)
-                if(throttle < 0.00001):
-                    throttle = 0
                 brake = max(0.0, -throttle_brake)
                 if(brake < self.brake_deadband):
                     brake = 0.0
             
                 #### Manage Steer using the dedicated PID
-                current_steer_filt = self.steer_error_lpf.filt(current_steer) # Not Used in the current implementation
-                steer_err_rough = target_steer - current_steer_filt # Not Used in the current implementation
-                steer_err = steer_err_rough # Not Used in the current implementation
-
-                if(CALIBRATION_LOG): # Not Used in the current implementation
-                    self.pid_steering.log(steer_err, delta_t, "steer") # Not Used in the current implementation
-                
-                steer_rough = self.pid_steering.step(steer_err, delta_t) # Not Used in the current implementation
-                steer = self.steer_lpf.filt(steer_rough) # Not Used in the current implementation
-                
+                # steer_err_rough = target_steer - current_steer
+                # steer_err = self.steer_error_lpf.filt(steer_err_rough)
+                current_steer_filt = self.steer_error_lpf.filt(current_steer)
                 # steer_err_rough = target_steer - self.steer_error_lpf.filt(current_steer)
-                if(CALIBRATION_LOG): 
-                    rospy.loginfo('SpeedCurrent -> %f, SpeedTarget -> %f, SteerCurrent -> %f, SteerTarget -> %f, SteerCurrentFilt -> %f, Target_angular_speed -> %f', 
-                                   current_lin_vel, target_lin_vel, current_steer, target_steer, current_steer_filt, target_ang_vel) # Not Used in the current implementation
+                steer_err_rough = target_steer - current_steer_filt
+                steer_err = steer_err_rough
 
-                    rospy.loginfo('Throttle_brake -> %f, Throttle -> %f, Brake -> %f, Steer -> %f, Steer_rough -> %f, error -> %f, error_rough -> %f ', 
-                                   throttle_brake, throttle, brake, steer, steer_rough, steer_err, target_steer - current_steer ) # Not Used in the current implementation
+                if(CALIBRATION_LOG):
+                    self.pid_steering.log(steer_err, delta_t, "steer")
+                
+                steer_rough = self.pid_steering.step(steer_err, delta_t)
+                steer = self.steer_lpf.filt(steer_rough)
+                
+                if(CALIBRATION_LOG):
+                    rospy.loginfo('SpeedCurrent -> %f, SpeedTarget -> %f, SteerCurrent -> %f, SteerTarget -> %f, SteerCurrentFilt -> %f, Target_angular_speed -> %f', 
+                                   current_lin_vel, target_lin_vel, current_steer, target_steer, current_steer_filt, target_ang_vel)
+                    rospy.loginfo('Throttle_brake -> %f, Throttle -> %f, Brake -> %f, Steer -> %f, Steer_rough -> %f, error -> %f, error_rough -> %f ', throttle_brake, throttle, brake, steer, steer_rough, steer_err, target_steer - current_steer )
 
                 self.time = current_time
 
-                if USE_PID_FOR_STEERING:
-                    return throttle, brake, steer
-                else:
-                    return throttle, brake, target_steer
+                #return throttle, brake, steer
+                return throttle, brake, target_steer
             else:
                 self.time = current_time
                 return 0.0, 0.0, 0.0
