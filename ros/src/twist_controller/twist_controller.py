@@ -16,7 +16,7 @@ PID_STEER_RESET_Target_CH_EN = False
 PID_STEER_RESET_Trend_CH_EN = True
 PID_STEER_RESET_Target_Invertion_EN = True 
 PID_CONTROL_MIN_RESET_EN = True
-PID_CONTROL_MIN_RESET_TH = 0.05
+PID_CONTROL_MIN_RESET_TH = 0.03
 CALIBRATION_PARAMS = False
 CALIBRATION_LOG = False
 USE_PID_FOR_STEERING = True
@@ -29,11 +29,11 @@ class Controller(object):
         ####### PARAMETERS coming from Zeigler Nichols analisys
         #self.pid_steering = PID(.6 , 1.2, .06, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
         # PID Steer Ku --> 2.5 Tu --> 0.6(30samples at 0.02s) 
-        self.pid_steering = PID(.75 , 1.5, .0332, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
+        self.pid_steering = PID(.70 , 1.5, .0282, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
         
         ####### Define the low pass filter to be applied to steering target value
         self.steer_error_lpf = LowPassFilter(.4, .1) # Not Used in the current implementation
-        self.steer_lpf = LowPassFilter(.6, .1) # Not Used in the current implementation
+        self.steer_lpf = LowPassFilter(.5, .1) # Not Used in the current implementation
         self.steer_target_lpf = LowPassFilter(.3, .1)
 
         self.max_steer_angle = kwargs["max_steer_angle"]
@@ -61,11 +61,7 @@ class Controller(object):
             ####### Convert angular speed (current and target) to steering angle (current and target)
             current_steer = self.yaw_controller.get_steering(current_lin_vel, current_ang_vel, current_lin_vel)
             target_steer = self.yaw_controller.get_steering(target_lin_vel, target_ang_vel, current_lin_vel)
-<<<<<<< HEAD
-
-=======
->>>>>>> 9ab948d7d2ccd3cc4faa445d04e5423eb54c1341
-            #target_steer = self.steer_target_lpf.filt(target_steer)
+            target_steer = self.steer_target_lpf.filt(target_steer)
             #target_steer = max(-self.max_steer_angle,min(self.max_steer_angle,target_steer))
             ####### Used to reset PIDs integral component depending on the target change
             self.check_targets_for_reset(target_lin_vel, target_steer)
@@ -80,11 +76,7 @@ class Controller(object):
                 throttle_brake = self.pid_control.step(speed_err, delta_t)
 
                 throttle = max(0.0,throttle_brake)
-<<<<<<< HEAD
                 if(throttle < 0.00001):
-=======
-                if(throttle < 0.0001):
->>>>>>> 9ab948d7d2ccd3cc4faa445d04e5423eb54c1341
                     throttle = 0
                 brake = max(0.0, -throttle_brake)
                 if(brake < self.brake_deadband):
