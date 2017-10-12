@@ -61,7 +61,10 @@ class Controller(object):
             ####### Convert angular speed (current and target) to steering angle (current and target)
             current_steer = self.yaw_controller.get_steering(current_lin_vel, current_ang_vel, current_lin_vel)
             target_steer = self.yaw_controller.get_steering(target_lin_vel, target_ang_vel, current_lin_vel)
+<<<<<<< HEAD
 
+=======
+>>>>>>> 9ab948d7d2ccd3cc4faa445d04e5423eb54c1341
             #target_steer = self.steer_target_lpf.filt(target_steer)
             #target_steer = max(-self.max_steer_angle,min(self.max_steer_angle,target_steer))
             ####### Used to reset PIDs integral component depending on the target change
@@ -77,7 +80,11 @@ class Controller(object):
                 throttle_brake = self.pid_control.step(speed_err, delta_t)
 
                 throttle = max(0.0,throttle_brake)
+<<<<<<< HEAD
                 if(throttle < 0.00001):
+=======
+                if(throttle < 0.0001):
+>>>>>>> 9ab948d7d2ccd3cc4faa445d04e5423eb54c1341
                     throttle = 0
                 brake = max(0.0, -throttle_brake)
                 if(brake < self.brake_deadband):

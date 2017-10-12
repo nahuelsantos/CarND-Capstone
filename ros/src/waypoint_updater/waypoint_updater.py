@@ -9,16 +9,12 @@ from copy import deepcopy
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
-
 As mentioned in the doc, you should ideally first implement a version which does not care
 about traffic lights or obstacles.
-
 Once you have created dbw_node, you will update this node to use the status of traffic lights too.
-
 Please note that our simulator also provides the exact location of traffic lights and their
 current status in `/vehicle/traffic_lights` message. You can use this message to build this node
 as well as to verify your TL classifier.
-
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
@@ -86,6 +82,7 @@ class WaypointUpdater(object):
                 waypoint.twist.twist.linear.x = RefSpeed
 
     def speed_before_traffic(self, d_car_light):
+<<<<<<< HEAD
         """Return waypoint speed when traffic light is seen"""
         # speed = 0.0
         if d_car_light < MIN_D:
@@ -93,6 +90,13 @@ class WaypointUpdater(object):
         elif d_car_light < MAX_D:
             speed = (RefSpeed/2) * ((d_car_light - MIN_D) / (MAX_D - MIN_D))
         
+=======
+        # d_car_light = self.distance(self.base_waypoints, self.last_wp, self.traffic_light_index)
+        # default speed to return
+        speed = 0
+        if d_car_light > STOP_LINE:
+            speed = (RefSpeed/2)*(d_car_light - MIN_D) / (MAX_D-MIN_D)
+>>>>>>> 9ab948d7d2ccd3cc4faa445d04e5423eb54c1341
         return speed
 
 
