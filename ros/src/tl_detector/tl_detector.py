@@ -89,10 +89,7 @@ class TLDetector(object):
         """
         self.has_image = True
         self.camera_image = msg
-<<<<<<< HEAD
     def loop(self):
-=======
->>>>>>> 9ab948d7d2ccd3cc4faa445d04e5423eb54c1341
 
         light_wp, state = self.process_traffic_lights()
 

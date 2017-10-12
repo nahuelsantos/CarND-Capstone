@@ -21,8 +21,8 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 LOOKAHEAD_WPS = 40 # Number of waypoints we will publish. You can change this number
 # User defined constraint
 BufferTime = 1.5 # when seen traffic light, time to react, in seconds
-MIN_D = 1 # minimum distance before reaching the traffic light
-MAX_D = 45 # maximum distance before reaching the traffic light
+MIN_D = .5 # minimum distance before reaching the traffic light
+MAX_D = 40 # maximum distance before reaching the traffic light
 RefSpeed = 6.2
 
 class WaypointUpdater(object):
@@ -73,16 +73,12 @@ class WaypointUpdater(object):
     def set_future_speed(self, lookAheadWpts):
         # slow down gradually
         for index, waypoint in enumerate(lookAheadWpts):
-            if(self.traffic_light_index >=index + 1 + self.last_wp):
-                wp_vel = self.get_waypoint_velocity(self.base_waypoints[index + 1 + self.last_wp])
-                wp_traffic_d = self.distance(self.base_waypoints, index + 1 +self.last_wp, self.traffic_light_index)
-                speed = self.speed_before_traffic(wp_traffic_d)
-                waypoint.twist.twist.linear.x = speed   
-            else: 
-                waypoint.twist.twist.linear.x = RefSpeed
+            wp_vel = self.get_waypoint_velocity(self.base_waypoints[index + 1 + self.last_wp])
+            wp_traffic_d = self.distance(self.base_waypoints, index + 1 +self.last_wp, self.traffic_light_index)
+            speed = self.speed_before_traffic(wp_traffic_d)
+            waypoint.twist.twist.linear.x = speed   
 
     def speed_before_traffic(self, d_car_light):
-<<<<<<< HEAD
         """Return waypoint speed when traffic light is seen"""
         # speed = 0.0
         if d_car_light < MIN_D:
@@ -90,38 +86,8 @@ class WaypointUpdater(object):
         elif d_car_light < MAX_D:
             speed = (RefSpeed/2) * ((d_car_light - MIN_D) / (MAX_D - MIN_D))
         
-=======
-        # d_car_light = self.distance(self.base_waypoints, self.last_wp, self.traffic_light_index)
-        # default speed to return
-        speed = 0
-        if d_car_light > STOP_LINE:
-            speed = (RefSpeed/2)*(d_car_light - MIN_D) / (MAX_D-MIN_D)
->>>>>>> 9ab948d7d2ccd3cc4faa445d04e5423eb54c1341
         return speed
 
-
-
-        '''
-        if self.next_red_light and self.waypoints:
-            if waypoint_index <= self.next_red_light:
-                distance_to_red_light = self.distance(self.waypoints, waypoint_index, self.next_red_light)
-                if (distance_to_red_light < self.STOP_DISTANCE):
-                    velocity = 0.0
-                elif (distance_to_red_light < self.REDUCE_SPEED_DISTANCE):
-                    ratio = distance_to_red_light / self.REDUCE_SPEED_DISTANCE
-                    velocity = self.MAX_VELOCITY * ratio
-                else:
-                    velocity = self.get_default_velocity()
-            else:
-                velocity = 0.0
-        else:
-            velocity = self.get_default_velocity()
-
-        if velocity > self.MAX_VELOCITY:
-            velocity = self.MAX_VELOCITY
-
-        return velocity
-        '''
     def get_future_wpts(self):
         # get index closest to current position
         self.last_wp = self.nearest_wp(self.last_pos.position, self.base_waypoints)+1
