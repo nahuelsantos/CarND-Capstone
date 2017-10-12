@@ -14,7 +14,7 @@ import cv2
 import yaml
 import math
 
-STATE_COUNT_THRESHOLD = 3
+STATE_COUNT_THRESHOLD = 2
 
 class TLDetector(object):
     def __init__(self):
@@ -24,6 +24,7 @@ class TLDetector(object):
         self.waypoints = None
         self.camera_image = None
         self.lights = []
+        self.has_image = False
 
         sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
@@ -50,10 +51,10 @@ class TLDetector(object):
         # Load the right model depending on the param loaded in the launch
         if traffic_light_classifier_config == "REAL":
             print("Loaded classifier for real world use")
-            model_name = "squeezeNet_real.frozen"
+            model_name = "squeezeNet_real_environment"
         if traffic_light_classifier_config == "SIM":
             print("Loaded classifier for simulator use")
-            model_name = "squeezeNet_sim.frozen"
+            model_name = "squeezeNet_sim_environment"
 
         self.light_classifier = TLClassifier(model_name)
         self.listener = tf.TransformListener()
@@ -84,6 +85,7 @@ class TLDetector(object):
         """
         self.has_image = True
         self.camera_image = msg
+
         light_wp, state = self.process_traffic_lights()
 
         '''
