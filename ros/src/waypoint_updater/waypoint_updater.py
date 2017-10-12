@@ -24,11 +24,10 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 LOOKAHEAD_WPS = 20 # Number of waypoints we will publish. You can change this number
 # User defined constraint
-BufferTime = 1.3 # when seen traffic light, time to react, in seconds
+BufferTime = 1.5 # when seen traffic light, time to react, in seconds
 MIN_D = 0.5 # minimum distance before reaching the traffic light
-MAX_D = 40 # maximum distance before reaching the traffic light
+MAX_D = 45 # maximum distance before reaching the traffic light
 RefSpeed = 6.2
-STOP_LINE = 6
 
 class WaypointUpdater(object):
     def __init__(self):
@@ -54,8 +53,7 @@ class WaypointUpdater(object):
         # rospy.spin()
 
     def loop(self):
-        # published final wayponts
-
+        """Publishes finaly waypoints"""
         rate = rospy.Rate(10)
 
         while not rospy.is_shutdown():
@@ -63,63 +61,79 @@ class WaypointUpdater(object):
             check_skip = [self.base_waypoints, self.last_pos, self.frame_id]
             if None in check_skip:
                 continue
-            # get index closest to current position
-            self.last_wp = self.nearest_wp(self.last_pos.position, self.base_waypoints)+1
-            # fetch next LOOKAHEAD number of waypoints
-            ahead = min(len(self.base_waypoints),self.last_wp+LOOKAHEAD_WPS)
-            # deep copy a set of lookahead pts
-            lookAheadWpts = deepcopy(self.base_waypoints[self.last_wp:ahead])
-            # construct default speed for lookAheadWpts
-            for waypoint in lookAheadWpts:
-                waypoint.twist.twist.linear.x = RefSpeed
+            # fetch lookahead waypoihts
+            lookAheadWpts = self.get_future_wpts()
 
             # considers the traffic light position
-            # use two conditions to determine when to slow down and when to go full throttle
             if self.traffic_light_index is not None and self.traffic_light_time is not None:
-                legit_ahead = False
-                new_traffic = False
-
-                # when traffic light is first seen
-                if self.traffic_light_time > rospy.get_time() - BufferTime:
-                    new_traffic = True
-                # when traffic light is ahead
-                if self.traffic_light_index > self.last_wp:
-                    # calculate the distance between car and the traffic_light
-                    d_car_light = self.distance(self.base_waypoints, self.last_wp, self.traffic_light_index)
-                    car_speed = self.get_waypoint_velocity(self.base_waypoints[self.last_wp])
-                    # determine if this distance falls within a suitable range
-                    # if d_car_light < car_speed ** SLOW_DOWN: 
-                    if d_car_light > MIN_D and d_car_light < MAX_D: 
-                        legit_ahead = True
-
-                # when both condition are satisfied
-                if new_traffic == True and legit_ahead == True:
-                    rospy.logwarn("Red light ahead, index: %s, car_index: %s", self.traffic_light_index, self.last_wp)
-                    # slow down gradually
-                    for index, waypoint in enumerate(lookAheadWpts):
-                        wp_vel = self.get_waypoint_velocity(self.base_waypoints[index + 1 + self.last_wp])
-                        wp_traffic_d = self.distance(self.base_waypoints, index + 1 +self.last_wp, self.traffic_light_index)
-                        speed = self.speed_before_traffic(wp_traffic_d)
-                        rospy.logwarn("car slowing down")
-                        if speed < 0.5:
-                            waypoint.twist.twist.linear.x = 0
-                        else:
-                            waypoint.twist.twist.linear.x = speed                          
+                slow_down = self.decides_to_stop()
+                if slow_down:
+                    self.set_future_speed(lookAheadWpts)                        
 
             # construct message to be sent
-            message_to_sent = Lane()
-            message_to_sent.header.stamp = rospy.Time.now()
-            message_to_sent.header.frame_id = self.frame_id
-            message_to_sent.waypoints = lookAheadWpts
+            message_to_sent = self.construct_msg(lookAheadWpts)
             self.final_waypoints_pub.publish(message_to_sent)
 
+    def set_future_speed(self, lookAheadWpts):
+        # slow down gradually
+        for index, waypoint in enumerate(lookAheadWpts):
+            wp_vel = self.get_waypoint_velocity(self.base_waypoints[index + 1 + self.last_wp])
+            wp_traffic_d = self.distance(self.base_waypoints, index + 1 +self.last_wp, self.traffic_light_index)
+            speed = self.speed_before_traffic(wp_traffic_d)
+            waypoint.twist.twist.linear.x = speed    
+
+
     def speed_before_traffic(self, d_car_light):
-        # d_car_light = self.distance(self.base_waypoints, self.last_wp, self.traffic_light_index)
-        # default speed to return
-        speed = 0
-        if d_car_light > STOP_LINE:
-            speed = (d_car_light - MIN_D) / (MAX_D-MIN_D)
+        """Return waypoint speed when traffic light is seen"""
+        # speed = 0.0
+        if d_car_light < MIN_D:
+            speed = 0.0
+        elif d_car_light < MAX_D:
+            speed = (RefSpeed/2) * ((d_car_light - MIN_D) / (MAX_D - MIN_D))
+        
         return speed
+
+    def get_future_wpts(self):
+        # get index closest to current position
+        self.last_wp = self.nearest_wp(self.last_pos.position, self.base_waypoints)+1
+        # fetch next LOOKAHEAD number of waypoints
+        ahead = min(len(self.base_waypoints),self.last_wp+LOOKAHEAD_WPS)
+        # deep copy a set of lookahead pts
+        lookAheadWpts = deepcopy(self.base_waypoints[self.last_wp:ahead])
+        # construct default speed for lookAheadWpts
+        for waypoint in lookAheadWpts:
+            waypoint.twist.twist.linear.x = RefSpeed
+
+        return lookAheadWpts
+
+    def decides_to_stop(self):
+        # use two conditions to determine when to slow down and when to go full throttle
+        legit_ahead = False
+        new_traffic = False
+
+        # when traffic light is first seen
+        if self.traffic_light_time > rospy.get_time() - BufferTime:
+            new_traffic = True
+        # when traffic light is ahead
+        if self.traffic_light_index > self.last_wp:
+            # calculate the distance between car and the traffic_light
+            d_car_light = self.distance(self.base_waypoints, self.last_wp, self.traffic_light_index)
+            # determine if this distance falls within a suitable range
+            if d_car_light > MIN_D and d_car_light < MAX_D: 
+                legit_ahead = True
+
+        if legit_ahead == True and new_traffic == True:
+            return True
+        else:
+            return False
+
+    def construct_msg(self, lookAheadWpts):
+        # construct message to be sent
+        message_to_sent = Lane()
+        message_to_sent.header.stamp = rospy.Time.now()
+        message_to_sent.header.frame_id = self.frame_id
+        message_to_sent.waypoints = lookAheadWpts
+        return message_to_sent
 
     def pose_cb(self, msg):
         # TODO: Implement
