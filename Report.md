@@ -55,7 +55,7 @@ After that, you extract a patch of the image and send it to a classifier to extr
 
 The `waypoint_updater` node will publish future waypoints from current position. It would also modify the speed given the traffic light condition. If no red light has been detected, this node will set the future waypoints' speed to be a constant number. As one will see in the simulator, the speed would be around 15 MPH when no traffic is detected. However when traffic light is detected and the right stopping region is entered, the future waypoints' speed would be reduced in a linear fashion.
 
-## Setup
+### Setup
 The `waypoint_updater` node is subscribed to three topics. Namely, they each are the `/current_pose`, `/base_waypoints`, `/traffic_waypoint`.
 
 ```python
@@ -81,7 +81,7 @@ The `RefSpeed` defines each target waypoint's speed without the inteference of t
 
 The `BufferTime` defines a stale time for the vehicle to react to traffic light.  
 
-## Future Waypoints
+### Future Waypoints
 
 In side the `loop`, the waypoint_update node will continusly fetch an index from the `/base_waypoints` topic that is closely related the current position of the vehicle.
 
@@ -113,7 +113,7 @@ This is then used to fetch next number of `LOOKAHEAD_WPS` and store them in a `l
             waypoint.twist.twist.linear.x = RefSpeed
 ```
 
-## Incorporating Traffic Light
+### Incorporating Traffic Light
 
 To decide when to slow down, there are two conditions to consider. One condition decides if the traffic light is truly ahead of the vehicle and in the region for slowing down. Another condition decides whether the traffic light is new by looking at its timestamp and comparing it against a `BufferTime` variable.
 
@@ -162,7 +162,7 @@ And finally it will construct message to be send to the final waypoint topic.
         return message_to_sent
 ```
 
-## Controller
+# Controller
 
 Each cycle of the main loop, the *controller* has the goal to compute the actuation to let the car follow the target longitudinal and angular speeds required by the *supervisor*. These target information, together with the current angular and longitudinal speeds, are defined in the messages transferred via __/current\_velocity__, and __/twist\_cmd__ topics by the __waypoint\_updater__. These values could change every iteration of the loop and the controller should satisfy the requests.
 
@@ -201,7 +201,7 @@ else:
     self.controller.reset()
 ```
 
-## PIDs implementation
+### PIDs implementation
 
 Even if the actuations required by the system were three (throttle, brake and steer), because of the strict connection between the throttle and the brake actuations, we decided to define a single PID both for throttle and brake.
 
@@ -275,7 +275,7 @@ steer = self.steer_lpf.filt(steer_rough)
 ...
 return throttle, brake, steer
 ```
-## Controller Calibration
+### Controller Calibration
 
 In order to have good performances with the PID controllers, a parameter tuning is required. In particular need to be defined all the three gain used by the PID for the proportional, for the integral and for the derivative components.
 
@@ -286,13 +286,13 @@ Since in this case some of the required information for such a modelization are 
 We first compute the *Zeigler-Nichols* calibration for the speed controller, fixing the steer angle to some different values (0, +-0.1, +-0.05).
 Then the *Zeigler-Nichols* calibration for the steering PID - using the previously found calibration for the speed PID with a fixed target speed - verifying the critical proportional gain with several target steering angles (0, +-0.1, +-0.05).
 
-## Steering management adjustment
+### Steering management adjustment
 
 After several trial, we figure out we were using a PID controller for something directly controllable. Differently from the longitudinal speed, that is connected to the throttle and the breaking pedals by all the physics of the car, the angular speed is directly related to the steering angle (that is exactly the actuator we are controlling).
 
 However, analyzing in deep the signal coming from the *pure_pursuit* we realized it was too much noisy to be applied directly (even with the application of a low pass filter). So we finally decided to keep the pid.
 
-## The *tl* classification node
+### The *tl* classification node
 
 The essence of this node is to process the incoming camera images in the driving direction to classify them as containing either a red light, yellow light, green light, or no light. The main task of the team in this part of the project was to find a model allowing fast detection with a fair accuracy.
 
