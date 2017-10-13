@@ -6,7 +6,8 @@ import keras.backend as K
 import rospy
 import tensorflow as tf
 from graph_utils import load_graph
-from config import *
+
+IMAGE_SIZE = 224
 
 ready_for_classification = False
 
@@ -44,7 +45,7 @@ class TLClassifier(object):
             if self.ready_for_classification:
                 # SqueezeNet model expects RGB image input.
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                image = cv2.resize(image, (IMAGE_HEIGHT, IMAGE_WIDTH))
+                image = cv2.resize(image, (IMAGE_SIZE, IMAGE_SIZE))
                 image = image.astype(K.floatx())
                 image /= 255.0
                 image = np.expand_dims(image, axis=0)
