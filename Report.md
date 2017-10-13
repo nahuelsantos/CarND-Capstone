@@ -1,3 +1,52 @@
+# Perception
+
+`tl_detector` node is in charge of detecting traffic lights and send the closest waypoint to the planner in order to stop when a red light is detected.
+
+There are two main steps to accomplish this task:
+
+1. Detect where in the dash cam is going to appear the next traffic light
+2. Send that patch of the image to a classifier which will tell what color the light is at that moment
+
+For the first step, you have to find the next waypoint corresponding to a traffic light. That will give you the position of the light. Once you have that info, you have to compute where in the image will the traffic light appear (using the pinhole camera model).
+
+![Pinhole model](report/pinhole_camera_model.png)
+![Pinhole model formulas](report/pinhole_camera_model_formulas.png)
+
+The interesting part of the code is this:
+
+```python
+cx = image_width/2
+cy = image_height/2
+
+rpy = tf.transformations.euler_from_quaternion(rot)
+yaw = rpy[2]
+
+(ptx, pty, ptz) = (point_in_world.x, point_in_world.y, point_in_world.z)
+
+point_to_cam = (ptx * math.cos(yaw) - pty * math.sin(yaw),
+                ptx * math.sin(yaw) + pty * math.cos(yaw),
+                ptz)
+point_to_cam = [sum(x) for x in zip(point_to_cam, trans)]
+
+###################################################################
+# Tweak to get it working on the simulator
+if fx < 10:
+    fx = 1400
+    fy = 2000
+    cx = image_width/2
+    cy = image_height
+###################################################################
+
+x = -point_to_cam[1] * fx / point_to_cam[0];
+y = -point_to_cam[2] * fy / point_to_cam[0];
+
+x = int(x + cx)
+y = int(y + cy)
+```
+
+After that, you extract a patch of the image and send it to a classifier to extract the state of the light. In case it's red, you have to publish the waypoint corresponding to the line closest to the traffic light in order to stop the car there.
+
+
 # Planning
 
 The `waypoint_updater` node will publish future waypoints from current position. It would also modify the speed given the traffic light condition. If no red light has been detected, this node will set the future waypoints' speed to be a constant number. As one will see in the simulator, the speed would be around 15 MPH when no traffic is detected. However when traffic light is detected and the right stopping region is entered, the future waypoints' speed would be reduced in a linear fashion.
