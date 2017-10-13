@@ -262,7 +262,7 @@ class TLDetector(object):
         if y + margin > image_size[1]:
             y1, y2 = image_size[1] - 2 * margin, image_size[1]
 
-        return x1, x2, y1, y2
+        return y1, y2, x1, x2
 
     def get_light_state(self, light):
         """Determines the current color of the traffic light
