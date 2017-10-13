@@ -236,6 +236,34 @@ class TLDetector(object):
 
         return (x, y)
 
+    @staticmethod
+    def get_safe_bounds(x, y, margin, image_size):
+        """Return an image patch between the boundaries of the image_cb
+
+        Args:
+            x: x coordinate of center point
+            y: y coordinate of center point
+            margin: distance from the point to the end of the patch
+            image_size: tuple representing the image boundaries (width, height)
+
+        Returns:
+            x1: min x value
+            x2: max x value
+            y1: min y value
+            y2: max y value
+        """
+        x1, x2, y1, y2 = x-margin, x+margin, y-margin, y+margin
+        if x - margin < 0:
+            x1, x2 = 0, 2 * margin
+        if x + margin > image_size[0]:
+            x1, x2 = image_size[0] - 2 * margin, image_size[0]
+        if y - margin < 0:
+            y1, y2 = 0, 2 * margin
+        if y + margin > image_size[1]:
+            y1, y2 = image_size[1] - 2 * margin, image_size[1]
+
+        return y1, y2, x1, x2
+
     def get_light_state(self, light):
         """Determines the current color of the traffic light
 
@@ -260,7 +288,10 @@ class TLDetector(object):
         # margin = 100
         # Corrected to be adapted with the squeeze net configuration
         margin = 112
-        cv_image = cv_image[y-margin:y+margin,x-margin:x+margin]
+        y1, y2, x1, x2 = self.get_safe_bounds(x, y, margin,
+                                    (self.config['camera_info']['image_width'],
+                                    self.config['camera_info']['image_height']))
+        cv_image = cv_image[y1:y2,x1:x2]
 
         #Get classification
         return self.light_classifier.get_classification(cv_image)
