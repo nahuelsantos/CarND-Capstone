@@ -10,11 +10,12 @@ IMAGE_SIZE = 224
 
 def freeze_net(model_name):
 
+    # Create squeezenet model and load the saved weights
     model = SqueezeNet(3, (IMAGE_SIZE, IMAGE_SIZE, 3))
     model.load_weights("Models/{}.hdf5".format(model_name))
-    # Define session and Keras configuration elements
-    sess = K.get_session()
 
+    # Get the session from Keras and get the model graph for freezing 
+    sess = K.get_session()
     graph = sess.graph
     input_graph_def = graph.as_graph_def()
 
@@ -25,7 +26,6 @@ def freeze_net(model_name):
         # sess: the current session is required for current weights retrieval
         # input_graph_def: the graph_def is needed to get all nodes structure
         # output_node_names.split(","): names are requred to select the usefull nodes only
-
         output_graph_def = graph_util.convert_variables_to_constants(sess, input_graph_def, output_node_names.split(","))
         
         with tf.gfile.GFile('Models/{}.pb'.format(model_name), "wb") as f:

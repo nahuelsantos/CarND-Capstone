@@ -6,7 +6,7 @@ from styx_msgs.msg import Lane, Waypoint
 from std_msgs.msg import Int32
 import math
 from copy import deepcopy
-
+import tf
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
 As mentioned in the doc, you should ideally first implement a version which does not care
@@ -90,7 +90,7 @@ class WaypointUpdater(object):
 
     def get_future_wpts(self):
         # get index closest to current position
-        self.last_wp = self.nearest_wp(self.last_pos.position, self.base_waypoints)+1
+        self.last_wp = self.nearest_wp(self.last_pos.position, self.base_waypoints)
         # fetch next LOOKAHEAD number of waypoints
         ahead = min(len(self.base_waypoints),self.last_wp+LOOKAHEAD_WPS)
         # deep copy a set of lookahead pts
@@ -135,7 +135,7 @@ class WaypointUpdater(object):
         self.last_pos = msg.pose
         self.frame_id = msg.header.frame_id
 
-       
+    '''       
     def nearest_wp(self, last_position, waypoints):
         """find nearest waypoint index to the current location"""
         dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
@@ -148,7 +148,39 @@ class WaypointUpdater(object):
                 nearest_index = index
                 nearest_distance = distance
         return nearest_index
+    '''
+    def nearest_wp(self, last_position, waypoints):
+        """find nearest waypoint index to the current location"""
+        dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
+        nearest_distance = 9999;
+        nearest_index = -1;
 
+        # Prevent to start from the first wp but start from the last computed as nearest
+        start_index = self.last_wp if self.last_wp is not None else 0
+
+        for i in range(start_index, len(waypoints)):
+            waypoint_pos = waypoints[i].pose.pose.position
+            distance = dl(last_position, waypoint_pos)
+            if distance < nearest_distance:
+                nearest_index = i
+                nearest_distance = distance
+        return self.check_nearest_wp(nearest_index,waypoints)
+        
+    def check_nearest_wp(self, nearest_index, waypoints):
+
+        wp_x = waypoints[nearest_index].pose.pose.position.x
+        wp_y = waypoints[nearest_index].pose.pose.position.y
+        car_heading = math.atan2( (wp_y - self.last_pos.position.y), (wp_x - self.last_pos.position.x) )
+
+        [roll, pitch, yaw] = tf.transformations.euler_from_quaternion([self.last_pos.orientation.x,
+                                                                       self.last_pos.orientation.y,
+                                                                       self.last_pos.orientation.z,
+                                                                       self.last_pos.orientation.w])
+        angle = math.fabs(yaw - car_heading)
+        if angle > math.pi / 4.0:
+            return nearest_index + 1
+        return nearest_index
+    
     def waypoints_cb(self, waypoints):
         # TODO: Implement
         """Store the map data"""

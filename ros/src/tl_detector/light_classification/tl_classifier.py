@@ -47,8 +47,10 @@ class TLClassifier(object):
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 # The image should arrive already with size 224x224. Resize it to be sure
                 image = cv2.resize(image, (IMAGE_SIZE, IMAGE_SIZE))
+                # Adjust image values converting the type and normalizing it.
                 image = image.astype(K.floatx())
                 image /= 255.0
+                
                 image = np.expand_dims(image, axis=0)
 
                 with self.graph.as_default() as graph:
@@ -56,9 +58,9 @@ class TLClassifier(object):
                     preds = self.sess.run(self.op_tensor, feed_dict)
 
                 pred = np.argmax(preds)
+                # Convert the predicted class in the "format" required by the detector (as defined in the pred_dict)
                 pred = self.pred_dict[pred]
 
-                #rospy.loginfo('Classified Class: {},classifier output {}'.format(pred, preds))
             else:
                 pred = TrafficLight.UNKNOWN
 
