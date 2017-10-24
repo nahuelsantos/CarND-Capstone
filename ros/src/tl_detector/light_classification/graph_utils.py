@@ -1,6 +1,5 @@
 import tensorflow as tf
 from tensorflow.python.framework import graph_util
-from config import *
 import squeezeNet
 import keras.backend as K
 
@@ -52,5 +51,5 @@ def load_graph(graph_file, use_xla=False):
 
 if __name__ == '__main__':
     freeze_net("squeezeNet_sim_environment")
-    freeze_net("squeezeNet_sim_environment")
+    freeze_net("squeezeNet_real_environment")
 

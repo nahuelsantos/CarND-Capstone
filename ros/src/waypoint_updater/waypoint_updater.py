@@ -21,19 +21,17 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 LOOKAHEAD_WPS = 40 # Number of waypoints we will publish. You can change this number
 # User defined constraint
 BufferTime = 1.5 # when seen traffic light, time to react, in seconds
-MIN_D = .5 # minimum distance before reaching the traffic light
-MAX_D = 40 # maximum distance before reaching the traffic light
-RefSpeed = 6.2
+MIN_D = 3 # minimum distance before reaching the traffic light
+MAX_D = 50 # maximum distance before reaching the traffic light
 
 class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        self.base_wpts_topic = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
@@ -44,6 +42,7 @@ class WaypointUpdater(object):
         self.frame_id = None
         self.traffic_light_index = None
         self.traffic_light_time = rospy.get_time()
+        self.refSpeed = 0.0
 
         self.loop()
         # rospy.spin()
@@ -72,19 +71,20 @@ class WaypointUpdater(object):
 
     def set_future_speed(self, lookAheadWpts):
         # slow down gradually
-        for index, waypoint in enumerate(lookAheadWpts):
-            wp_vel = self.get_waypoint_velocity(self.base_waypoints[index + 1 + self.last_wp])
-            wp_traffic_d = self.distance(self.base_waypoints, index + 1 +self.last_wp, self.traffic_light_index)
-            speed = self.speed_before_traffic(wp_traffic_d)
+        for i, waypoint in enumerate(lookAheadWpts):
+            index = (i + 1 + self.last_wp) % len(self.base_waypoints)
+            wp_vel = self.get_waypoint_velocity(self.base_waypoints[index])
+            wp_traffic_d = self.distance(self.base_waypoints, index , self.traffic_light_index)
+            speed = self.speed_before_traffic(wp_traffic_d,wp_vel)
             waypoint.twist.twist.linear.x = speed   
 
-    def speed_before_traffic(self, d_car_light):
+    def speed_before_traffic(self, d_car_light, wp_vel):
         """Return waypoint speed when traffic light is seen"""
-        # speed = 0.0
+        speed = self.refSpeed
         if d_car_light < MIN_D:
             speed = 0.0
         elif d_car_light < MAX_D:
-            speed = (RefSpeed/2) * ((d_car_light - MIN_D) / (MAX_D - MIN_D))
+            speed = (self.refSpeed) * ((d_car_light - MIN_D) / (MAX_D - MIN_D))
         
         return speed
 
@@ -97,7 +97,7 @@ class WaypointUpdater(object):
         lookAheadWpts = deepcopy(self.base_waypoints[self.last_wp:ahead])
         # construct default speed for lookAheadWpts
         for waypoint in lookAheadWpts:
-            waypoint.twist.twist.linear.x = RefSpeed
+            waypoint.twist.twist.linear.x = self.refSpeed
 
         return lookAheadWpts
 
@@ -185,6 +185,9 @@ class WaypointUpdater(object):
         # TODO: Implement
         """Store the map data"""
         self.base_waypoints = waypoints.waypoints
+        self.refSpeed = float(self.base_waypoints[0].twist.twist.linear.x)#*3.6*0.621/2.42
+        print(self.refSpeed)
+        self.base_wpts_topic.unregister()
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement

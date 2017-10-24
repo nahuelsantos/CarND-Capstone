@@ -37,7 +37,10 @@ class TLDetector(object):
         rely on the position of the light and the camera image to predict it.
         '''
         sub3 = rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
-        sub6 = rospy.Subscriber('/image_color', Image, self.image_cb)
+
+        # Use the correct camera_topic depending on the real and simulation enviroment         
+        self.camera_topic = rospy.get_param("~camera_topic")
+        sub6 = rospy.Subscriber(self.camera_topic, Image, self.image_cb)
 
         config_string = rospy.get_param("/traffic_light_config")
         self.config = yaml.load(config_string)
@@ -46,13 +49,13 @@ class TLDetector(object):
 
         self.bridge = CvBridge()
         
-        traffic_light_classifier_config = rospy.get_param("~traffic_light_classifier")
+        self.environment = rospy.get_param("~environment")
         
         # Load the right model depending on the param loaded in the launch
-        if traffic_light_classifier_config == "REAL":
+        if self.environment == "REAL":
             print("Loaded classifier for real world use")
-            model_name = "squeezeNet_real_environment"
-        if traffic_light_classifier_config == "SIM":
+            model_name = "squeezeNet_realFLAT_environment"
+        if self.environment == "SIM":
             print("Loaded classifier for simulator use")
             model_name = "squeezeNet_sim_environment"
 
@@ -82,7 +85,6 @@ class TLDetector(object):
     def image_cb(self, msg):
         """Identifies red lights in the incoming camera image and publishes the index
             of the waypoint closest to the red light's stop line to /traffic_waypoint
-
         Args:
             msg (Image): image from car-mounted camera
 
@@ -145,12 +147,10 @@ class TLDetector(object):
             https://en.wikipedia.org/wiki/Closest_pair_of_points_problem
         Args:
             pose (Pose): position to match a waypoint to
-
         Returns:
             int: index of the closest waypoint in self.waypoints
 
         """
-
         if (self.waypoints is None):
             rospy.logwarn("tl_detector.get_closest_waypoint :: No waypoints yet")
             return
@@ -180,13 +180,11 @@ class TLDetector(object):
 
         Args:
             point_in_world (Point): 3D location of a point in the world
-
         Returns:
             x (int): x coordinate of target point in image
             y (int): y coordinate of target point in image
 
         """
-
         fx = self.config['camera_info']['focal_length_x']
         fy = self.config['camera_info']['focal_length_y']
         image_width = self.config['camera_info']['image_width']
@@ -239,13 +237,11 @@ class TLDetector(object):
     @staticmethod
     def get_safe_bounds(x, y, margin, image_size):
         """Return an image patch between the boundaries of the image_cb
-
         Args:
             x: x coordinate of center point
             y: y coordinate of center point
             margin: distance from the point to the end of the patch
             image_size: tuple representing the image boundaries (width, height)
-
         Returns:
             x1: min x value
             x2: max x value
@@ -266,13 +262,10 @@ class TLDetector(object):
 
     def get_light_state(self, light):
         """Determines the current color of the traffic light
-
         Args:
             light (TrafficLight): light to classify
-
         Returns:
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
-
         """
         #return light.state
 
@@ -281,17 +274,17 @@ class TLDetector(object):
             return False
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+        if(self.environment == "SIM"):
+            x, y = self.project_to_image_plane(light.pose.pose.position)
 
-        x, y = self.project_to_image_plane(light.pose.pose.position)
-
-        #TODO use light location to zoom in on traffic light in image
-        # margin = 100
-        # Corrected to be adapted with the squeeze net configuration
-        margin = 112
-        y1, y2, x1, x2 = self.get_safe_bounds(x, y, margin,
-                                    (self.config['camera_info']['image_width'],
-                                    self.config['camera_info']['image_height']))
-        cv_image = cv_image[y1:y2,x1:x2]
+            #TODO use light location to zoom in on traffic light in image
+            # margin = 100
+            # Corrected to be adapted with the squeeze net configuration
+            margin = 112
+            y1, y2, x1, x2 = self.get_safe_bounds(x, y, margin,
+                                        (self.config['camera_info']['image_width'],
+                                        self.config['camera_info']['image_height']))
+            cv_image = cv_image[y1:y2,x1:x2]
 
         #Get classification
         return self.light_classifier.get_classification(cv_image)
@@ -316,11 +309,9 @@ class TLDetector(object):
     def process_traffic_lights(self):
         """Finds closest visible traffic light, if one exists, and determines its
             location and color
-
         Returns:
             int: index of waypoint closes to the upcoming stop line for a traffic light (-1 if none exists)
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
-
         """
         light = None
 
