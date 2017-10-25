@@ -5,7 +5,7 @@ from pid import *
 from yaw_controller import YawController
 from lowpass import LowPassFilter
 from std_msgs.msg   import Float32
-
+import math
 
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
@@ -14,18 +14,26 @@ PID_CONTROL_RESET_Trend_CH_EN = True
 PID_CONTROL_RESET_Target_CH_EN = False
 PID_STEER_RESET_Target_CH_EN = False
 PID_STEER_RESET_Trend_CH_EN = True
-PID_CONTROL_MIN_RESET_EN = True
-PID_CONTROL_MIN_RESET_TH = 0.05
+PID_CONTROL_MIN_RESET_EN = False
+PID_CONTROL_MIN_RESET_TH = .5
 CALIBRATION_PARAMS = False
 CALIBRATION_LOG = False
 USE_PID_FOR_STEERING = False
-BRAKE_FACTOR = 5
+BRAKE_FACTOR = .6
+PID2BRAKE_ADJ =  .3
+BRAKE_MIN = -1
+THROTTLE_MAX = .85
+THROTTLE_MIN = .05
+THROTTLE_MAX_CHANGE = .05
+PID2THROTTLE_ADJ =  .6
 
 class Controller(object):
     def __init__(self, *args, **kwargs):
         
+        
         ############# Define the 2 PIDs: one for the throttle/brake control, the second one for the steering
-        self.pid_control = PID(1, .1, .075, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
+        self.pid_control = PID(5, .05, .0)#, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
+        #self.pid_control = PID(1, .1, .075, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
         #self.pid_control = PID(5, .45, .125, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
         ####### PARAMETERS coming from Zeigler Nichols analisys
         #self.pid_steering = PID(.6 , 1.2, .06, mn = -kwargs["max_steer_angle"], mx = kwargs["max_steer_angle"])
@@ -46,12 +54,14 @@ class Controller(object):
 
         self.last_speed_target = 0.0
         self.last_steer_target = 0.0
+        self.last_throttle = 0.0
+        vehicle_mass = float(kwargs["vehicle_mass"]) + float(kwargs["fuel_capacity"]) * GAS_DENSITY
+        self.max_brake_torque   = BRAKE_FACTOR * vehicle_mass * abs(float(kwargs["decel_limit"])) * float(kwargs["wheel_radius"])
 
 
     def control(self, *args, **kwargs):
 
         try:
-
             current_time = rospy.get_time()
 
             twist = kwargs['twist_cmd']
@@ -60,13 +70,13 @@ class Controller(object):
             ####### Get current/target velocities (linear and angular) from the received messages in the topics 		
             target_lin_vel = twist.twist.linear.x
             target_ang_vel = twist.twist.angular.z
-
             current_lin_vel = current_velocity.twist.linear.x
             current_ang_vel = current_velocity.twist.angular.z
             ####### Convert angular speed (current and target) to steering angle (current and target)
             current_steer = self.yaw_controller.get_steering(current_lin_vel, current_ang_vel, current_lin_vel)
             target_steer = self.yaw_controller.get_steering(target_lin_vel, target_ang_vel, current_lin_vel)
             target_steer = self.steer_target_lpf.filt(target_steer)
+            
             #target_steer = max(-self.max_steer_angle,min(self.max_steer_angle,target_steer))
             ####### Used to reset PIDs integral component depending on the target change
             self.check_targets_for_reset(target_lin_vel, target_steer)
@@ -75,33 +85,48 @@ class Controller(object):
                 delta_t = current_time - self.time
                 
                 #### Manage Throttle and Brake using a single PID and considering deadband value too
-                #speed_err = target_lin_vel - current_lin_vel
-                speed_err = self.control_error_lpf.filt(target_lin_vel - current_lin_vel)
+                speed_err = target_lin_vel - current_lin_vel
+                #speed_err = self.control_error_lpf.filt(target_lin_vel - current_lin_vel)
                 throttle_brake = self.pid_control.step(speed_err, delta_t)
-
-                throttle = max(0.0,throttle_brake)
-                if(throttle < 0.00001):
-                    throttle = 0
-                brake = max(0.0, -throttle_brake)
-                if(brake < self.brake_deadband):
-                    brake = 0.0
-                brake = brake * BRAKE_FACTOR
-            
-                #### Manage Steer using the dedicated PID
-                current_steer_filt = self.steer_error_lpf.filt(current_steer) # Not Used in the current implementation
-                steer_err_rough = target_steer - current_steer_filt # Not Used in the current implementation
-                steer_err = steer_err_rough # Not Used in the current implementation
-
-                if(CALIBRATION_LOG): # Not Used in the current implementation
-                    self.pid_steering.log(steer_err, delta_t, "steer") # Not Used in the current implementation
                 
-                steer_rough = self.pid_steering.step(steer_err, delta_t) # Not Used in the current implementation
-                steer = 0
-                if (throttle != 0 or target_lin_vel > 0.5):
-                    steer = self.steer_lpf.filt(steer_rough) # Not Used in the current implementation
+                # PID output > 0 means the car need to accelerate
+                if throttle_brake >= 0.0:
+                    throttle = max(0.0,throttle_brake*PID2THROTTLE_ADJ)
+                    throttle = self.convertToActuation(throttle_brake, THROTTLE_MAX)
+                    if throttle - self.last_throttle > THROTTLE_MAX_CHANGE:
+                        throttle = self.last_throttle + THROTTLE_MAX_CHANGE
+                        self.last_throttle = throttle
+                    brake = 0.0
+                # BRAKE_MIN < PID output < 0 means the car can avoid to brake but need to stop accelerating
+                elif throttle_brake >= BRAKE_MIN:
+                    throttle = self.last_throttle = 0.0
+                    brake = 0.0
+                # PID output < BRAKE_MIN  means the car need to decelerate
                 else:
-                    self.pid_steering.reset()
-                # steer_err_rough = target_steer - self.steer_error_lpf.filt(current_steer)
+                    throttle = self.last_throttle = 0.0
+                    brake = max(0.0, -throttle_brake*PID2BRAKE_ADJ)
+                    if(brake < self.brake_deadband):
+                        brake = 0.0
+                    else:
+                        brake = self.convertToActuation(brake, self.max_brake_torque) 
+                
+                if USE_PID_FOR_STEERING:
+                    #### Manage Steer using the dedicated PID
+                    current_steer_filt = self.steer_error_lpf.filt(current_steer) # Not Used in the current implementation
+                    steer_err_rough = target_steer - current_steer_filt # Not Used in the current implementation
+                    steer_err = steer_err_rough # Not Used in the current implementation
+
+                    if(CALIBRATION_LOG): # Not Used in the current implementation
+                        self.pid_steering.log(steer_err, delta_t, "steer") # Not Used in the current implementation
+                    
+                    steer_rough = self.pid_steering.step(steer_err, delta_t) # Not Used in the current implementation
+                    steer = 0
+                    if (throttle != 0 or target_lin_vel > 0.5):
+                        steer = self.steer_lpf.filt(steer_rough) # Not Used in the current implementation
+                    else:
+                        self.pid_steering.reset()
+                    # steer_err_rough = target_steer - self.steer_error_lpf.filt(current_steer)
+                
                 if(CALIBRATION_LOG): 
                     rospy.loginfo('SpeedCurrent -> %f, SpeedTarget -> %f, SteerCurrent -> %f, SteerTarget -> %f, SteerCurrentFilt -> %f, Target_angular_speed -> %f', 
                                    current_lin_vel, target_lin_vel, current_steer, target_steer, current_steer_filt, target_ang_vel) # Not Used in the current implementation
@@ -161,3 +186,6 @@ class Controller(object):
     def reset(self):
         self.pid_control.reset()
         self.pid_steering.reset()
+        
+    def convertToActuation(self, value, scale):
+        return scale * math.tanh(value)

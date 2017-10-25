@@ -57,7 +57,9 @@ class DBWNode(object):
         self.throttle_pub = rospy.Publisher('/vehicle/throttle_cmd', ThrottleCmd, queue_size=1)
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd', BrakeCmd, queue_size=1)
 
-        params = {"wheel_base": wheel_base, "steer_ratio": steer_ratio, "min_speed": min_speed, "max_lat_accel": max_lat_accel, "max_steer_angle": max_steer_angle, "brake_deadband": brake_deadband, "accel_limit": accel_limit, "decel_limit": decel_limit}
+        params = {"wheel_base": wheel_base, "wheel_radius":wheel_radius, "steer_ratio": steer_ratio, "min_speed": min_speed, "max_lat_accel": max_lat_accel, 
+                  "max_steer_angle": max_steer_angle, "brake_deadband": brake_deadband, "accel_limit": accel_limit, 
+                  "decel_limit": decel_limit, "vehicle_mass":vehicle_mass, "fuel_capacity":fuel_capacity}
 
         self.controller = Controller(**params)
 
@@ -65,7 +67,7 @@ class DBWNode(object):
         rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_cb)
         rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
 
-        rate = rospy.Rate(10) # 50Hz
+        rate = rospy.Rate(50) # 50Hz
         while not rospy.is_shutdown():
             try:
                 self.loop()
@@ -84,7 +86,7 @@ class DBWNode(object):
                               'current_vel': self.current_velocity}
                 
                 throttle, brake, steer = self.controller.control(**parameters)
-
+                # print("THROTTLE --> {}; BRAKE --> {}".format(throttle,brake))
                 #self.publish(throttle, brake, steer)
                 self.publish(throttle, brake, steer)
                 #self.publish(5.0, 0.0, 0.0)
