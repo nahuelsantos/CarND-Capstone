@@ -6,7 +6,7 @@ from styx_msgs.msg import Lane, Waypoint
 from std_msgs.msg import Int32
 import math
 from copy import deepcopy
-
+import tf
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
 As mentioned in the doc, you should ideally first implement a version which does not care
@@ -21,19 +21,17 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 LOOKAHEAD_WPS = 40 # Number of waypoints we will publish. You can change this number
 # User defined constraint
 BufferTime = 1.5 # when seen traffic light, time to react, in seconds
-MIN_D = .5 # minimum distance before reaching the traffic light
-MAX_D = 40 # maximum distance before reaching the traffic light
-RefSpeed = 6.2
+MIN_D = 3 # minimum distance before reaching the traffic light
+MAX_D = 50 # maximum distance before reaching the traffic light
 
 class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        self.base_wpts_topic = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
@@ -44,6 +42,7 @@ class WaypointUpdater(object):
         self.frame_id = None
         self.traffic_light_index = None
         self.traffic_light_time = rospy.get_time()
+        self.refSpeed = 0.0
 
         self.loop()
         # rospy.spin()
@@ -72,32 +71,33 @@ class WaypointUpdater(object):
 
     def set_future_speed(self, lookAheadWpts):
         # slow down gradually
-        for index, waypoint in enumerate(lookAheadWpts):
-            wp_vel = self.get_waypoint_velocity(self.base_waypoints[index + 1 + self.last_wp])
-            wp_traffic_d = self.distance(self.base_waypoints, index + 1 +self.last_wp, self.traffic_light_index)
-            speed = self.speed_before_traffic(wp_traffic_d)
+        for i, waypoint in enumerate(lookAheadWpts):
+            index = (i + 1 + self.last_wp) % len(self.base_waypoints)
+            wp_vel = self.get_waypoint_velocity(self.base_waypoints[index])
+            wp_traffic_d = self.distance(self.base_waypoints, index , self.traffic_light_index)
+            speed = self.speed_before_traffic(wp_traffic_d,wp_vel)
             waypoint.twist.twist.linear.x = speed   
 
-    def speed_before_traffic(self, d_car_light):
+    def speed_before_traffic(self, d_car_light, wp_vel):
         """Return waypoint speed when traffic light is seen"""
-        # speed = 0.0
+        speed = self.refSpeed
         if d_car_light < MIN_D:
             speed = 0.0
         elif d_car_light < MAX_D:
-            speed = (RefSpeed/2) * ((d_car_light - MIN_D) / (MAX_D - MIN_D))
+            speed = (self.refSpeed) * ((d_car_light - MIN_D) / (MAX_D - MIN_D))
         
         return speed
 
     def get_future_wpts(self):
         # get index closest to current position
-        self.last_wp = self.nearest_wp(self.last_pos.position, self.base_waypoints)+1
+        self.last_wp = self.nearest_wp(self.last_pos.position, self.base_waypoints)
         # fetch next LOOKAHEAD number of waypoints
         ahead = min(len(self.base_waypoints),self.last_wp+LOOKAHEAD_WPS)
         # deep copy a set of lookahead pts
         lookAheadWpts = deepcopy(self.base_waypoints[self.last_wp:ahead])
         # construct default speed for lookAheadWpts
         for waypoint in lookAheadWpts:
-            waypoint.twist.twist.linear.x = RefSpeed
+            waypoint.twist.twist.linear.x = self.refSpeed
 
         return lookAheadWpts
 
@@ -135,7 +135,7 @@ class WaypointUpdater(object):
         self.last_pos = msg.pose
         self.frame_id = msg.header.frame_id
 
-       
+    '''       
     def nearest_wp(self, last_position, waypoints):
         """find nearest waypoint index to the current location"""
         dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
@@ -148,11 +148,46 @@ class WaypointUpdater(object):
                 nearest_index = index
                 nearest_distance = distance
         return nearest_index
+    '''
+    def nearest_wp(self, last_position, waypoints):
+        """find nearest waypoint index to the current location"""
+        dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
+        nearest_distance = 9999;
+        nearest_index = -1;
 
+        # Prevent to start from the first wp but start from the last computed as nearest
+        start_index = self.last_wp if self.last_wp is not None else 0
+
+        for i in range(start_index, len(waypoints)):
+            waypoint_pos = waypoints[i].pose.pose.position
+            distance = dl(last_position, waypoint_pos)
+            if distance < nearest_distance:
+                nearest_index = i
+                nearest_distance = distance
+        return self.check_nearest_wp(nearest_index,waypoints)
+        
+    def check_nearest_wp(self, nearest_index, waypoints):
+
+        wp_x = waypoints[nearest_index].pose.pose.position.x
+        wp_y = waypoints[nearest_index].pose.pose.position.y
+        car_heading = math.atan2( (wp_y - self.last_pos.position.y), (wp_x - self.last_pos.position.x) )
+
+        [roll, pitch, yaw] = tf.transformations.euler_from_quaternion([self.last_pos.orientation.x,
+                                                                       self.last_pos.orientation.y,
+                                                                       self.last_pos.orientation.z,
+                                                                       self.last_pos.orientation.w])
+        angle = math.fabs(yaw - car_heading)
+        if angle > math.pi / 4.0:
+            return nearest_index + 1
+        return nearest_index
+    
     def waypoints_cb(self, waypoints):
         # TODO: Implement
         """Store the map data"""
         self.base_waypoints = waypoints.waypoints
+        self.refSpeed = float(self.base_waypoints[0].twist.twist.linear.x)#*3.6*0.621/2.42
+        print(self.refSpeed)
+        self.base_wpts_topic.unregister()
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement

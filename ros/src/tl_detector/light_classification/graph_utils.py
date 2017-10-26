@@ -1,19 +1,20 @@
 import tensorflow as tf
 from tensorflow.python.framework import graph_util
-from config import *
 import squeezeNet
 import keras.backend as K
 
 # Used to load the tensorflow image dimension handling in keras backend
 K.set_image_dim_ordering('tf')
+IMAGE_SIZE = 224
 
 def freeze_net(model_name):
 
-    model = SqueezeNet(3, (IMAGE_HEIGHT, IMAGE_WIDTH, 3))
+    # Create squeezenet model and load the saved weights
+    model = SqueezeNet(3, (IMAGE_SIZE, IMAGE_SIZE, 3))
     model.load_weights("Models/{}.hdf5".format(model_name))
-    # Define session and Keras configuration elements
-    sess = K.get_session()
 
+    # Get the session from Keras and get the model graph for freezing 
+    sess = K.get_session()
     graph = sess.graph
     input_graph_def = graph.as_graph_def()
 
@@ -24,10 +25,9 @@ def freeze_net(model_name):
         # sess: the current session is required for current weights retrieval
         # input_graph_def: the graph_def is needed to get all nodes structure
         # output_node_names.split(","): names are requred to select the usefull nodes only
-
         output_graph_def = graph_util.convert_variables_to_constants(sess, input_graph_def, output_node_names.split(","))
         
-        with tf.gfile.GFile('Models/{}.frozen.pb'.format(model_name), "wb") as f:
+        with tf.gfile.GFile('Models/{}.pb'.format(model_name), "wb") as f:
             f.write(output_graph_def.SerializeToString())
         print("%d ops in the final graph." % len(output_graph_def.node))
 
@@ -50,6 +50,6 @@ def load_graph(graph_file, use_xla=False):
 
 
 if __name__ == '__main__':
-    freeze_net(squeezeNet_sim)
-    freeze_net(squeezeNet_real)
+    freeze_net("squeezeNet_sim_environment")
+    freeze_net("squeezeNet_real_environment")
 
