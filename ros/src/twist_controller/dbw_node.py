@@ -65,24 +65,24 @@ class DBWNode(object):
         rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_cb)
         rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
 
-        rate = rospy.Rate(10) # 50Hz
+        rate = rospy.Rate(50) # 50Hz
         while not rospy.is_shutdown():
             try:
                 self.loop()
                 rate.sleep()
             except Exception, e:
                 print(e)
-                
+
 
     def loop(self):
 
-        # EAFP approach to attributes access. The access to self.dbw_en, self.twist_cmd and self.current_velocity will throw an exception if these values were never populated (messages never sent in the topics) 
+        # EAFP approach to attributes access. The access to self.dbw_en, self.twist_cmd and self.current_velocity will throw an exception if these values were never populated (messages never sent in the topics)
         try:
             # Execute the controller routine only if the dbw_enable signal is == True
             if(self.dbw_en):
                 parameters = {'twist_cmd': self.twist_cmd,
                               'current_vel': self.current_velocity}
-                
+
                 throttle, brake, steer = self.controller.control(**parameters)
 
                 #self.publish(throttle, brake, steer)
@@ -91,11 +91,11 @@ class DBWNode(object):
             # If dbw_enable==False, the car is controlled by the driver and the controller need to be resetted.
             else:
                 self.controller.reset()
-            
+
         except AttributeError:
             rospy.logwarn("First messages from topics 'dbw_enabled' and/or 'twist_cmd' and/or 'current_velocity' still missing")
-            pass 
-            
+            pass
+
 
 
     def publish(self, throttle, brake, steer):
