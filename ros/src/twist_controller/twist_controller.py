@@ -21,10 +21,10 @@ CALIBRATION_LOG = False
 USE_PID_FOR_STEERING = False
 BRAKE_FACTOR = .6
 PID2BRAKE_ADJ =  .3
-BRAKE_MIN = -1
-THROTTLE_MAX = .85
+BRAKE_MIN = -.05
+THROTTLE_MAX = .75
 THROTTLE_MIN = .05
-THROTTLE_MAX_CHANGE = .05
+THROTTLE_MAX_CHANGE = .06
 PID2THROTTLE_ADJ =  .6
 
 class Controller(object):
@@ -32,7 +32,7 @@ class Controller(object):
         
         
         ############# Define the 2 PIDs: one for the throttle/brake control, the second one for the steering
-        self.pid_control = PID(5, .05, .0)#, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
+        self.pid_control = PID(1.8, .005, .0)#, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
         #self.pid_control = PID(1, .1, .075, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
         #self.pid_control = PID(5, .45, .125, mn = kwargs["decel_limit"], mx = kwargs["accel_limit"])
         ####### PARAMETERS coming from Zeigler Nichols analisys
@@ -96,6 +96,8 @@ class Controller(object):
                     if throttle - self.last_throttle > THROTTLE_MAX_CHANGE:
                         throttle = self.last_throttle + THROTTLE_MAX_CHANGE
                         self.last_throttle = throttle
+                    if throttle < THROTTLE_MIN:
+                        throttle = 0.0
                     brake = 0.0
                 # BRAKE_MIN < PID output < 0 means the car can avoid to brake but need to stop accelerating
                 elif throttle_brake >= BRAKE_MIN:
@@ -135,7 +137,8 @@ class Controller(object):
                                    throttle_brake, throttle, brake, steer, steer_rough, steer_err, target_steer - current_steer ) # Not Used in the current implementation
 
                 self.time = current_time
-
+                if(11.11-current_lin_vel < 0):
+                    print("Target: {} - Current:{} ".format(target_lin_vel,current_lin_vel))
                 if USE_PID_FOR_STEERING:
                     return throttle, brake, steer
                 else:
