@@ -18,10 +18,10 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 40 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
 # User defined constraint
 BufferTime = 1.5 # when seen traffic light, time to react, in seconds
-MIN_D = 3 # minimum distance before reaching the traffic light
+MIN_D = 1 # minimum distance before reaching the traffic light
 MAX_D = 50 # maximum distance before reaching the traffic light
 MIN_SPEED = .5
 
@@ -191,7 +191,7 @@ class WaypointUpdater(object):
         """Store the map data"""
         self.base_waypoints = waypoints.waypoints
         self.refSpeed = float(rospy.get_param('/waypoint_loader/velocity'))*1000/3600
-        self.refSpeed = self.refSpeed - self.refSpeed*.05 
+        self.refSpeed -= self.refSpeed*.07 
         #self.refSpeed = float(self.base_waypoints[0].twist.twist.linear.x)#*3.6*0.621/2.42
         self.base_wpts_topic.unregister()
 
