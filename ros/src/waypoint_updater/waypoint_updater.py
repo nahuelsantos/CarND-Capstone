@@ -46,25 +46,27 @@ class WaypointUpdater(object):
 
         self.loop()
         # rospy.spin()
+        rate = rospy.Rate(10) # 50Hz
+        while not rospy.is_shutdown():
+            try:
+                self.loop()
+                rate.sleep()
+            except Exception, e:
+                print(e)
+                
 
     def loop(self):
         """Publishes finaly waypoints"""
-        rate = rospy.Rate(10)
-
-        while not rospy.is_shutdown():
-            rate.sleep()
-            check_skip = [self.base_waypoints, self.last_pos, self.frame_id]
-            if None in check_skip:
-                continue
+        check_skip = [self.base_waypoints, self.last_pos, self.frame_id]
+        if None not in check_skip:
+            
             # fetch lookahead waypoihts
             lookAheadWpts = self.get_future_wpts()
-
             # considers the traffic light position
             if self.traffic_light_index is not None and self.traffic_light_time is not None:
                 slow_down = self.decides_to_stop()
                 if slow_down:
                     self.set_future_speed(lookAheadWpts)                        
-
             # construct message to be sent
             message_to_sent = self.construct_msg(lookAheadWpts)
             self.final_waypoints_pub.publish(message_to_sent)
@@ -185,8 +187,8 @@ class WaypointUpdater(object):
         # TODO: Implement
         """Store the map data"""
         self.base_waypoints = waypoints.waypoints
-        self.refSpeed = float(self.base_waypoints[0].twist.twist.linear.x)#*3.6*0.621/2.42
-        print(self.refSpeed)
+        self.refSpeed = float(rospy.get_param('/waypoint_loader/velocity'))*1000/3600
+        #self.refSpeed = float(self.base_waypoints[0].twist.twist.linear.x)#*3.6*0.621/2.42
         self.base_wpts_topic.unregister()
 
     def traffic_cb(self, msg):
